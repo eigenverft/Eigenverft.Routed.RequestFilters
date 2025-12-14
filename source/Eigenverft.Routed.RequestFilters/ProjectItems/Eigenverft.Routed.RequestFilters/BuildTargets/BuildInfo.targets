@@ -1,0 +1,148 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<UsingTask TaskName="GenerateBuildInfo" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+
+		<ParameterGroup>
+			<IntermediateOutputPath ParameterType="System.String" Required="true" />
+			<Configuration        ParameterType="System.String" Required="true" />
+			<ProjectDirectory     ParameterType="System.String" Required="true" />
+			<BuildBranch          ParameterType="System.String" Required="false" />
+			<RootNamespace        ParameterType="System.String" Required="false" />
+			<GeneratedFile        ParameterType="System.String" Output="true" />
+		</ParameterGroup>
+
+		<Task>
+			<Using Namespace="System" />
+			<Using Namespace="System.IO" />
+			<Using Namespace="System.Diagnostics" />
+			<Using Namespace="System.Globalization" />
+			<Using Namespace="Microsoft.Build.Framework" />
+
+			<Code Type="Fragment" Language="cs">
+				<![CDATA[
+    var ns  = string.IsNullOrWhiteSpace(RootNamespace) ? "BuildInfoNamespace" : RootNamespace.Trim();
+    var br  = GetBranch(ProjectDirectory, BuildBranch);
+    var mbr = GetMainBranch(br);
+    var sha = GetCommitSha(ProjectDirectory);
+    var ts  = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+    var cfg = Configuration ?? string.Empty;
+
+    var eBr  = Escape(br);
+    var eMbr = Escape(mbr);
+    var eCfg = Escape(cfg);
+    var eSha = Escape(sha);
+    var eTs  = Escape(ts);
+
+    var dir  = Path.Combine(IntermediateOutputPath, "Generated");
+    Directory.CreateDirectory(dir);
+    var file = Path.Combine(dir, "BuildInfo.g.cs");
+
+    var src =
+$@"using System;
+using System.Globalization;
+
+namespace {ns}
+{{
+    public static class BuildInfo
+    {{
+	    public static string RootNamespace {{ get; }} = ""{ns}"";
+        public static string Branch {{ get; }} = ""{eBr}"";
+        public static string MainBranchName {{ get; }} = ""{eMbr}"";
+        public static string Configuration {{ get; }} = ""{eCfg}"";
+        public static string CommitSha {{ get; }} = ""{eSha}"";
+        public static DateTime BuildTimeUtc {{ get; }} = DateTime.Parse(""{eTs}"", CultureInfo.InvariantCulture);
+    }}
+}}
+";
+
+    File.WriteAllText(file, src);
+    GeneratedFile = file;
+    Log.LogMessage(MessageImportance.Low, $"Generated BuildInfo at '{file}' for branch '{br}' (main '{mbr}', ns '{ns}').");
+
+    string GetBranch(string projectDir, string explicitBranch)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitBranch)) return explicitBranch.Trim();
+
+        var envBranch =
+            Environment.GetEnvironmentVariable("BUILD_SOURCEBRANCHNAME") ??
+            Environment.GetEnvironmentVariable("GITHUB_REF_NAME") ??
+            Environment.GetEnvironmentVariable("CI_COMMIT_REF_NAME");
+
+        if (!string.IsNullOrWhiteSpace(envBranch)) return envBranch.Trim();
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "rev-parse --abbrev-ref HEAD",
+                WorkingDirectory = projectDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var proc = Process.Start(psi);
+            if (proc != null)
+            {
+                var output = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit(5000);
+                if (!string.IsNullOrWhiteSpace(output)) return output;
+            }
+        }
+        catch { }
+
+        return "unknown-branch";
+    }
+
+    string GetMainBranch(string branch)
+    {
+        if (string.IsNullOrEmpty(branch)) return string.Empty;
+        var idx = branch.IndexOf('/');
+        return idx > 0 ? branch.Substring(0, idx) : branch;
+    }
+
+    string GetCommitSha(string projectDir)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "rev-parse --short HEAD",
+                WorkingDirectory = projectDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var proc = Process.Start(psi);
+            if (proc != null)
+            {
+                var output = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit(5000);
+                if (!string.IsNullOrWhiteSpace(output)) return output;
+            }
+        }
+        catch { }
+
+        return string.Empty;
+    }
+
+    string Escape(string value) =>
+        string.IsNullOrEmpty(value) ? string.Empty : value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        ]]>
+			</Code>
+		</Task>
+	</UsingTask>
+
+	<Target Name="GenerateBuildInfoTarget" BeforeTargets="CoreCompile">
+		<GenerateBuildInfo IntermediateOutputPath="$(IntermediateOutputPath)" Configuration="$(Configuration)" ProjectDirectory="$(MSBuildProjectDirectory)" BuildBranch="$(BuildBranch)" RootNamespace="$(RootNamespace)">
+			<Output TaskParameter="GeneratedFile" ItemName="Compile" />
+		</GenerateBuildInfo>
+	</Target>
+
+</Project>
+

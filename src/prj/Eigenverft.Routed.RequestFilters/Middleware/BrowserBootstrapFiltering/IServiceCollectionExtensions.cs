@@ -11,12 +11,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 {
     /// <summary>
-    /// Provides extension methods for configuring <see cref="BrowserBootstrapFiltering"/>.
+    /// Provides extension methods for configuring browser bootstrap filtering.
     /// </summary>
     public static partial class IServiceCollectionExtensions
     {
         /// <summary>
-        /// Registers browser bootstrap filtering with the standard behavior:
+        /// Registers browser bootstrap filtering with standard behavior:
         /// binds from configuration section <c>BrowserBootstrapFilteringOptions</c> if present,
         /// otherwise uses defaults defined on <see cref="BrowserBootstrapFilteringOptions"/>.
         /// </summary>
@@ -81,10 +81,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
         private static void AddInfrastructure(IServiceCollection services)
         {
             services.TryAddSingleton(typeof(IDeferredLogger<>), typeof(DeferredLogger<>));
-
-            // Do not override user-chosen storage; only provide a safe default.
             services.TryAddSingleton<IFilteringEventStorage, NullFilteringEventStorage>();
-
             services.AddOptions();
         }
     }

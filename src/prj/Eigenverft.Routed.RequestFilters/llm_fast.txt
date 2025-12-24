@@ -1,0 +1,41 @@
+﻿# XML Documentation Layout
+
+For xml doc use the following XML documentation layout, omit parts that are not needed.
+/// <summary>
+/// Demonstrates the minimal XML documentation layout used by this project.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Keep <see langword="summary"/> short for IntelliSense, and put a tiny copy-pasteable snippet in remarks.
+/// The returned value is identical to <paramref name="value"/>.
+/// </para>
+/// <para>Usage:</para>
+/// <code><![CDATA[
+/// var result = Foo("hello");
+/// // result == "hello"
+/// ]]></code>
+/// </remarks>
+/// <param name="value">The input value to echo.</param>
+/// <returns>The same value passed in <paramref name="value"/>.</returns>
+/// <exception cref="ArgumentException">Thrown when <paramref name="value"/> is null or whitespace.</exception>
+
+Keep simple properties and enums documented as well.
+Enum example:
+/// <summary>
+/// RSA 2048 with SHA-256. Intended as a broadly compatible default.
+/// </summary>
+CompatibilityRsa2048Sha256,
+
+# Design Guidelines
+
+- Never do complex operations on the return value.
+- Do not use record types use full classes instead.
+- Do not use single-line (unbraced) if statements. Always use braces. For a single statement, keep it on one line: if (cond) { DoThing(); }. For multiple statements, use a block with line breaks
+- Braces: Never use embedded statements without braces for any control-flow keyword (if/else/for/foreach/while/do/using/lock/try/catch/finally). This includes single-statement bodies such as return/throw/break/continue; always write braces.
+- Keep method parameters one one line unless there are more than 10 parameters.
+- for statements and foreach loops, always use a block with line breaks.
+- Use ArgumentNullException.ThrowIfNull(param) for null checks.
+- Use IEnumerable<T> for read-only sequences so callers can pass arrays, lists, LINQ results, or any other enumerable without extra conversions. Only use T[] or List<T> when you specifically require array semantics (indexing, Length, interop) or list mutation/performance characteristics
+- Object initializers: Prefer a single-line object initializer when it contains only simple property assignments and fits comfortably on one line; otherwise use a multi-line initializer with one member per line (and keep a trailing comma in both styles).
+- Assume CommunityToolkit.Diagnostics is added to all projects; use Guard methods from there for argument validation.
+

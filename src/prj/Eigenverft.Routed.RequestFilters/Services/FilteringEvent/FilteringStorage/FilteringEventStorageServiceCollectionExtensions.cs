@@ -1,6 +1,7 @@
 ﻿using System;
 
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.InMemoryFiltering;
+using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.InSqliteDbFiltering;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
@@ -11,7 +12,6 @@ using Microsoft.Extensions.Primitives;
 
 namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage
 {
-
     /// <summary>
     /// Identifies which filtering event storage should be registered as the active <see cref="IFilteringEventStorage"/>.
     /// </summary>
@@ -26,6 +26,11 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         /// Uses <see cref="NullFilteringEventStorage"/> as the active storage.
         /// </summary>
         Null = 1,
+
+        /// <summary>
+        /// Uses <see cref="InSqliteDbFilteringEventStorage"/> as the active storage.
+        /// </summary>
+        Sqlite = 2,
     }
 
     /// <summary>
@@ -46,6 +51,11 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
     /// Marker type that selects <see cref="NullFilteringEventStorage"/> as the active <see cref="IFilteringEventStorage"/>.
     /// </summary>
     public sealed class NullStorage : IFilteringEventStorageSelection { }
+
+    /// <summary>
+    /// Marker type that selects <see cref="InSqliteDbFilteringEventStorage"/> as the active <see cref="IFilteringEventStorage"/>.
+    /// </summary>
+    public sealed class SqliteStorage : IFilteringEventStorageSelection { }
 
     /// <summary>
     /// Builder returned by <see cref="FilteringEventStorageServiceCollectionExtensions.AddFilteringEventStorage{TSelection}(IServiceCollection)"/>.
@@ -92,6 +102,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
     public static class FilteringEventStorageServiceCollectionExtensions
     {
         private const string InMemorySectionPath = "InMemoryFilteringEventStorageOptions";
+        private const string SqliteSectionPath = "InSqliteDbFilteringEventStorageOptions";
 
         /// <summary>
         /// Central registry of known storages.
@@ -106,6 +117,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         private static readonly StorageRegistration[] KnownStorages =
         {
             StorageRegistration.Configurable(typeof(InMemoryStorage), typeof(InMemoryFilteringEventStorage), typeof(InMemoryFilteringEventStorageOptions), InMemorySectionPath),
+            StorageRegistration.Configurable(typeof(SqliteStorage), typeof(InSqliteDbFilteringEventStorage), typeof(InSqliteDbFilteringEventStorageOptions), SqliteSectionPath),
             StorageRegistration.Fixed(typeof(NullStorage), typeof(NullFilteringEventStorage)),
         };
 
@@ -200,6 +212,36 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             if (builder.OptionsType != typeof(InMemoryFilteringEventStorageOptions))
             {
                 throw new InvalidOperationException($"Active storage does not use options type '{typeof(InMemoryFilteringEventStorageOptions).FullName}'.");
+            }
+
+            AddExtensionOwnedOptionsConfigure(builder.Services, configure);
+            return builder;
+        }
+
+        /// <summary>
+        /// Applies additional configuration to <see cref="InSqliteDbFilteringEventStorageOptions"/> for the active storage.
+        /// </summary>
+        /// <param name="builder">The storage builder returned from <see cref="AddFilteringEventStorage{TSelection}(IServiceCollection)"/>.</param>
+        /// <param name="configure">An action that configures the options.</param>
+        /// <returns>The same builder instance for fluent chaining.</returns>
+        /// <remarks>
+        /// <para>
+        /// The configuration added here is extension-owned and will be removed and replaced when <see cref="AddFilteringEventStorage{TSelection}(IServiceCollection)"/>
+        /// is called again (last call wins).
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="builder"/> or <paramref name="configure"/> is null.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown if the active storage does not use <see cref="InSqliteDbFilteringEventStorageOptions"/>.
+        /// </exception>
+        public static FilteringEventStorageBuilder Configure(this FilteringEventStorageBuilder builder, Action<InSqliteDbFilteringEventStorageOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentNullException.ThrowIfNull(configure);
+
+            if (builder.OptionsType != typeof(InSqliteDbFilteringEventStorageOptions))
+            {
+                throw new InvalidOperationException($"Active storage does not use options type '{typeof(InSqliteDbFilteringEventStorageOptions).FullName}'.");
             }
 
             AddExtensionOwnedOptionsConfigure(builder.Services, configure);
@@ -418,7 +460,10 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             /// <param name="markerType">The marker type used to select the storage.</param>
             /// <param name="storageType">The implementation type.</param>
             /// <returns>A registry entry.</returns>
-            public static StorageRegistration Fixed(Type markerType, Type storageType) => new(markerType, storageType, null, null);
+            public static StorageRegistration Fixed(Type markerType, Type storageType)
+            {
+                return new StorageRegistration(markerType, storageType, null, null);
+            }
 
             /// <summary>
             /// Creates a registry entry for a storage that is configurable via options bound from configuration.
@@ -429,7 +474,9 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             /// <param name="sectionPath">The configuration section path to bind.</param>
             /// <returns>A registry entry.</returns>
             public static StorageRegistration Configurable(Type markerType, Type storageType, Type optionsType, string sectionPath)
-                => new(markerType, storageType, optionsType, sectionPath);
+            {
+                return new StorageRegistration(markerType, storageType, optionsType, sectionPath);
+            }
         }
 
         /// <summary>
@@ -580,6 +627,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             {
                 FilteringStorageKind.InMemory => services.AddFilteringEventStorage<InMemoryStorage>(),
                 FilteringStorageKind.Null => services.AddFilteringEventStorage<NullStorage>(),
+                FilteringStorageKind.Sqlite => services.AddFilteringEventStorage<SqliteStorage>(),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown filtering storage kind."),
             };
         }
@@ -600,9 +648,9 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             {
                 FilteringStorageKind.InMemory => services.AddFilteringEventStorage<InMemoryStorage>(configuration),
                 FilteringStorageKind.Null => services.AddFilteringEventStorage<NullStorage>(configuration),
+                FilteringStorageKind.Sqlite => services.AddFilteringEventStorage<SqliteStorage>(configuration),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown filtering storage kind."),
             };
         }
-
     }
 }

@@ -2,7 +2,6 @@
 
 using Eigenverft.Routed.RequestFilters.Options;
 
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
@@ -39,14 +38,6 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
         /// Gets or sets the cookie max-age.
         /// </summary>
         public TimeSpan CookieMaxAge { get; set; } = TimeSpan.FromDays(1);
-
-        /// <summary>
-        /// Gets or sets the http status code used when the middleware actively blocks a request.
-        /// </summary>
-        /// <remarks>
-        /// Reviewer note: With the slimmed design, bootstrap failures do not block; this remains as a reserved policy knob.
-        /// </remarks>
-        public int BlockStatusCode { get; set; } = StatusCodes.Status400BadRequest;
 
         /// <summary>
         /// Gets or sets the log level used when the request is allowed to proceed

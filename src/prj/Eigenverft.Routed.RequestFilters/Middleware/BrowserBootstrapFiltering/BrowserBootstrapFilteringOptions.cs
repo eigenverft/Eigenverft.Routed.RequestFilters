@@ -1,55 +1,140 @@
 ﻿using System;
-using System.Text;
-using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpResponseExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
-using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
+using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 {
     /// <summary>
+    /// Resolves conflicts when a request path matches both <see cref="BrowserBootstrapFilteringOptions.BootstrapScopePathPatterns"/>
+    /// and <see cref="BrowserBootstrapFilteringOptions.BootstrapExceptionPathPatterns"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is mapped to <see cref="FilterPriority"/> when calling
+    /// <see cref="FilterClassifier.Classify(string, string[]?, string[]?, bool, FilterPriority)"/>.
+    /// </para>
+    /// <para>
+    /// <see cref="PreferScope"/> maps to <see cref="FilterPriority.Whitelist"/> (scope wins on overlap).
+    /// <see cref="PreferException"/> maps to <see cref="FilterPriority.Blacklist"/> (exception wins on overlap).
+    /// </para>
+    /// </remarks>
+    public enum BootstrapConflictPreference
+    {
+        /// <summary>
+        /// If a path matches both scope and exception patterns, treat it as in-scope (bootstrap applies).
+        /// </summary>
+        PreferScope,
+
+        /// <summary>
+        /// If a path matches both scope and exception patterns, treat it as an exception (bootstrap does not apply).
+        /// </summary>
+        PreferException
+    }
+
+    /// <summary>
     /// Provides configuration options for <see cref="BrowserBootstrapFiltering"/>.
     /// </summary>
     /// <remarks>
-    /// Bindable from configuration section <c>BrowserBootstrapFilteringOptions</c>. If the section is missing,
-    /// property initializers act as defaults.
-    /// <para>Example configuration snippet:</para>
-    /// <code>
-    /// "BrowserBootstrapFilteringOptions": {
-    ///   "ProtectedPaths": [ "/", "/index.html" ],
-    ///   "CookieName": "Eigenverft.BrowserBootstrap",
-    ///   "CookieMaxAge": "1.00:00:00",
-    ///   "AllowRequestsWithoutBootstrapCookie": false,
-    ///   "RecordRequestsWithoutBootstrapCookie": false,
-    ///   "BlockStatusCode": 400,
-    ///   "LogLevelAllowedRequests": "None",
-    ///   "LogLevelBootstrapAttempt": "Information",
-    ///   "LogLevelBootstrapOutcome": "Warning",
-    ///   "CaseSensitivePaths": true
-    /// }
-    /// </code>
+    /// <para>
+    /// Stage 1 (path classification):
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>Scope (Whitelist): bootstrap applies.</description></item>
+    /// <item><description>Exception (Blacklist): bootstrap does not apply; policy decides allow/block immediately.</description></item>
+    /// <item><description>Unmatched: bootstrap does not apply; policy decides allow/block immediately.</description></item>
+    /// </list>
+    /// <para>
+    /// Stage 2 (bootstrap outcome for in-scope paths only): when the cookie cannot be established,
+    /// <see cref="AllowRequiredPathsOnBootstrapFailure"/> decides allow vs block.
+    /// </para>
     /// </remarks>
     public sealed class BrowserBootstrapFilteringOptions
     {
+        // --------------------------------------------------------------------
+        // Stage 1: Path classification (supports exact entries and wildcard patterns)
+        // --------------------------------------------------------------------
+
         /// <summary>
-        /// Gets or sets the list of request paths that are protected by the bootstrap check.
+        /// Gets or sets patterns that define the path scope where bootstrap applies.
         /// </summary>
         /// <remarks>
         /// Default: <c>/</c> and <c>/index.html</c>.
         /// </remarks>
-        public string[] ProtectedPaths { get; set; } = new[] { "/", "/index.html" };
+        public OptionsConfigOverridesDefaultsList<string> BootstrapScopePathPatterns { get; set; } = new[] { "/", "/index.html" };
 
         /// <summary>
-        /// Gets or sets a value indicating whether path comparisons are case sensitive.
+        /// Gets or sets patterns that define exceptions where bootstrap does not apply.
         /// </summary>
-        public bool CaseSensitivePaths { get; set; } = true;
+        /// <remarks>
+        /// Default: empty.
+        /// </remarks>
+        public OptionsConfigOverridesDefaultsList<string> BootstrapExceptionPathPatterns { get; set; } = new[] { "*" };
+
+        /// <summary>
+        /// Gets or sets how overlaps between scope and exception patterns are resolved.
+        /// </summary>
+        public BootstrapConflictPreference BootstrapConflictPreference { get; set; } = BootstrapConflictPreference.PreferScope;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether path matching is case sensitive.
+        /// </summary>
+        public bool CaseSensitivePaths { get; set; } = false;
+
+        // --------------------------------------------------------------------
+        // Stage 1 policy: What to do when bootstrap does NOT apply (exceptions + unmatched)
+        // --------------------------------------------------------------------
+
+        /// <summary>
+        /// Gets or sets a value indicating whether requests on exception paths are allowed to pass through.
+        /// </summary>
+        /// <remarks>
+        /// Applies to paths classified as <see cref="FilterMatchKind.Blacklist"/> by the classifier
+        /// (i.e., matching <see cref="BootstrapExceptionPathPatterns"/>).
+        /// </remarks>
+        public bool AllowRequestsOnBootstrapExceptionPaths { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether exception path hits are recorded.
+        /// </summary>
+        public bool RecordRequestsOnBootstrapExceptionPaths { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets the log level used when a request is classified as an exception path.
+        /// </summary>
+        public LogLevel LogLevelBootstrapExceptionPaths { get; set; } = LogLevel.None;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether requests on unmatched paths are allowed to pass through.
+        /// </summary>
+        /// <remarks>
+        /// Unmatched means the path matched neither scope nor exception patterns.
+        /// </remarks>
+        public bool AllowRequestsOnUnmatchedPaths { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether unmatched path hits are recorded.
+        /// </summary>
+        public bool RecordRequestsOnUnmatchedPaths { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets the log level used when a request is classified as unmatched.
+        /// </summary>
+        public LogLevel LogLevelUnmatchedPaths { get; set; } = LogLevel.None;
+
+        /// <summary>
+        /// Gets or sets the log level used when a request is classified as in-scope (bootstrap applies).
+        /// </summary>
+        /// <remarks>
+        /// This is classification-only logging. The allow/block decision is made by the bootstrap flow.
+        /// </remarks>
+        public LogLevel LogLevelBootstrapScopePaths { get; set; } = LogLevel.None;
+
+        // --------------------------------------------------------------------
+        // Bootstrap cookie + blocking
+        // --------------------------------------------------------------------
 
         /// <summary>
         /// Gets or sets the cookie name used as the bootstrap signal.
@@ -62,49 +147,49 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
         public TimeSpan CookieMaxAge { get; set; } = TimeSpan.FromDays(1);
 
         /// <summary>
-        /// Gets or sets the http status code that is used when the middleware actively blocks a request
-        /// after a failed bootstrap outcome.
+        /// Gets or sets the http status code used when the middleware actively blocks a request.
         /// </summary>
         public int BlockStatusCode { get; set; } = StatusCodes.Status400BadRequest;
 
-        /// <summary>
-        /// Gets or sets a value indicating whether requests that fail the bootstrap outcome are allowed to pass through.
-        /// </summary>
-        /// <remarks>
-        /// Set to <see langword="true"/> for rollout or accessibility scenarios where JavaScript or cookies might be disabled.
-        /// </remarks>
-        public bool AllowRequestsWithoutBootstrapCookie { get; set; } = false;
+        // --------------------------------------------------------------------
+        // Stage 2: Bootstrap outcome (only relevant for in-scope paths)
+        // --------------------------------------------------------------------
 
         /// <summary>
-        /// Gets or sets a value indicating whether bootstrap failures are recorded to the central event storage.
-        /// </summary>
-        public bool RecordRequestsWithoutBootstrapCookie { get; set; } = false;
-
-        /// <summary>
-        /// Gets or sets the log level used when the request is allowed to proceed normally (cookie already present).
+        /// Gets or sets a value indicating whether in-scope requests are allowed to pass through
+        /// when the bootstrap cookie could not be established.
         /// </summary>
         /// <remarks>
-        /// Use <see cref="LogLevel.None"/> to disable these "allowed" log lines.
+        /// Applies only to the internal bootstrap outcome endpoints.
         /// </remarks>
+        public bool AllowRequiredPathsOnBootstrapFailure { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether in-scope requests are recorded when bootstrap fails.
+        /// </summary>
+        /// <remarks>
+        /// Applies only to the internal bootstrap outcome endpoints.
+        /// </remarks>
+        public bool RecordRequiredPathsOnBootstrapFailure { get; set; } = true;
+
+        // --------------------------------------------------------------------
+        // Logging related to the bootstrap flow
+        // --------------------------------------------------------------------
+
+        /// <summary>
+        /// Gets or sets the log level used when the request is allowed to proceed normally
+        /// because the cookie already exists (or continue succeeds).
+        /// </summary>
         public LogLevel LogLevelAllowedRequests { get; set; } = LogLevel.None;
 
         /// <summary>
         /// Gets or sets the log level used when the middleware serves the bootstrap attempt HTML.
         /// </summary>
-        /// <remarks>
-        /// This log does not represent a whitelist/blacklist/unmatched classifier result; it indicates that
-        /// the middleware returned the bootstrap HTML (and therefore did not continue the pipeline on that request).
-        /// Use <see cref="LogLevel.None"/> to disable these log lines.
-        /// </remarks>
         public LogLevel LogLevelBootstrapAttempt { get; set; } = LogLevel.Information;
 
         /// <summary>
         /// Gets or sets the log level used for bootstrap outcomes (continue/fail), including allow/block decisions.
         /// </summary>
-        /// <remarks>
-        /// These logs use the standard filter log shape via <see cref="FilterDecisionLogBuilder"/>.
-        /// Use <see cref="LogLevel.None"/> to disable these log lines.
-        /// </remarks>
         public LogLevel LogLevelBootstrapOutcome { get; set; } = LogLevel.Warning;
     }
 }

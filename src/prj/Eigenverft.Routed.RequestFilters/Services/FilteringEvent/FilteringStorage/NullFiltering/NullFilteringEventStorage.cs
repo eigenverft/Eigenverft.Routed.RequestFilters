@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
 using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
 
 using Microsoft.Extensions.Logging;
@@ -82,5 +83,75 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         /// <returns>An empty snapshot.</returns>
         public IReadOnlyCollection<FilteringEventByMatchAggregate> GetByMatchKind(string remoteIpAddress)
             => Array.Empty<FilteringEventByMatchAggregate>();
+
+        /// <summary>
+        /// Removes all stored filtering events (and thus all aggregates) for the specified remote ip address.
+        /// </summary>
+        /// <remarks>
+        /// Reviewer note: Since this is a null storage, there is nothing to remove.
+        /// Returning <c>false</c> communicates that no data existed for the requested key.
+        /// </remarks>
+        /// <param name="remoteIpAddress">The normalized remote ip address string.</param>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+        /// <returns>Always a completed task returning <c>false</c>.</returns>
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        /// <summary>
+        /// Removes all stored filtering events (and thus related aggregates) for the specified remote ip address
+        /// that match the given event source.
+        /// </summary>
+        /// <remarks>
+        /// Reviewer note: Since this is a null storage, there is nothing to remove.
+        /// Returning <c>false</c> communicates that no data existed for the requested key.
+        /// </remarks>
+        /// <param name="remoteIpAddress">The normalized remote ip address string.</param>
+        /// <param name="eventSource">The event source to remove.</param>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+        /// <returns>Always a completed task returning <c>false</c>.</returns>
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, string eventSource, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        /// <summary>
+        /// Removes all stored filtering events (and thus related aggregates) for the specified remote ip address
+        /// that match the given match kind.
+        /// </summary>
+        /// <remarks>
+        /// Reviewer note: Since this is a null storage, there is nothing to remove.
+        /// Returning <c>false</c> communicates that no data existed for the requested key.
+        /// </remarks>
+        /// <param name="remoteIpAddress">The normalized remote ip address string.</param>
+        /// <param name="matchKind">The match kind to remove.</param>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+        /// <returns>Always a completed task returning <c>false</c>.</returns>
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, FilterMatchKind matchKind, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        /// <summary>
+        /// Removes all stored filtering events (and thus related aggregates) for the specified remote ip address
+        /// that match the given event source and match kind.
+        /// </summary>
+        /// <remarks>
+        /// Reviewer note: Since this is a null storage, there is nothing to remove.
+        /// Returning <c>false</c> communicates that no data existed for the requested key.
+        /// </remarks>
+        /// <param name="remoteIpAddress">The normalized remote ip address string.</param>
+        /// <param name="eventSource">The event source to remove.</param>
+        /// <param name="matchKind">The match kind to remove.</param>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+        /// <returns>Always a completed task returning <c>false</c>.</returns>
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, string eventSource, FilterMatchKind matchKind, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        /// <summary>
+        /// Clears all stored filtering events and all aggregates.
+        /// </summary>
+        /// <remarks>
+        /// Reviewer note: Since this is a null storage, clearing is a no-op.
+        /// </remarks>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+        /// <returns>A completed task.</returns>
+        public Task ClearAsync(CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 }

@@ -20,13 +20,21 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
     /// It uses a rough memory estimate (not exact heap measurement) to decide when to apply pressure handling
     /// defined by <see cref="InMemoryFilteringEventStorageOptions"/>.
     ///
-    /// On construction, it emits one debug log line with the currently configured options.
-    /// If configuration is reloadable, it also logs option changes at debug level.
+    /// Reviewer note: Concurrency model:
+    /// - A global reader/writer gate makes <see cref="IFilteringEventStorage.ClearAsync"/> atomic w.r.t. all other operations.
+    /// - A per-IP bucket lock serializes Store/Read/Remove for the same remote IP.
+    ///
+    /// Reviewer note: Option A:
+    /// - <see cref="InMemoryFilteringEventStorageOverflowBehavior.ClearAll"/> is NOT executed from <see cref="StoreAsync"/>.
+    ///   If configured, it is treated as "evict oldest" (with a warning) to avoid surprising side effects on writes.
+    ///   External code can still explicitly wipe data via <see cref="IFilteringEventStorage.ClearAsync"/>.
     /// </remarks>
     public sealed class InMemoryFilteringEventStorage : IFilteringEventStorage, IDisposable
     {
         private sealed class IpBucket
         {
+            public readonly object Sync = new();
+
             public readonly ConcurrentDictionary<(string Source, FilterMatchKind Kind), long> Counts = new();
 
             public long BlacklistTotal;
@@ -34,6 +42,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
 
             public long ApproxBytes;
             public long LastAccessTick;
+
             public int IsEvicted;
         }
 
@@ -47,6 +56,11 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         private readonly IDeferredLogger<InMemoryFilteringEventStorage> _logger;
         private readonly IDisposable? _optionsReloadSubscription;
 
+        // Global gate to provide atomic ClearAsync.
+        // - All normal operations take a read lock.
+        // - ClearAsync takes a write lock.
+        private readonly ReaderWriterLockSlim _clearGate = new(LockRecursionPolicy.NoRecursion);
+
         // ip -> per-ip bucket store (fast lookups by ip)
         private readonly ConcurrentDictionary<string, IpBucket> _byIp = new(StringComparer.Ordinal);
 
@@ -59,6 +73,9 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
 
         // Throttle for repeated "dropping" warnings.
         private long _lastDropLogTick;
+
+        // Throttle for repeated "ClearAll configured but ignored" warnings.
+        private long _lastClearAllIgnoredLogTick;
 
         /// <summary>
         /// Initializes a new instance of the storage.
@@ -85,7 +102,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         }
 
         /// <summary>
-        /// Disposes the options change subscription.
+        /// Disposes the options change subscription and the global gate.
         /// </summary>
         /// <remarks>
         /// If this instance is registered as a singleton in DI, the container will call <see cref="Dispose"/> during shutdown.
@@ -93,6 +110,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         public void Dispose()
         {
             _optionsReloadSubscription?.Dispose();
+            _clearGate.Dispose();
         }
 
         /// <inheritdoc />
@@ -101,210 +119,110 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             if (record is null) throw new ArgumentNullException(nameof(record));
             cancellationToken.ThrowIfCancellationRequested();
 
-            // No IP means nothing to bucket by. We keep this cheap and silent.
             var ipRaw = record.RemoteIpAddress;
             if (string.IsNullOrWhiteSpace(ipRaw))
             {
                 return Task.CompletedTask;
             }
 
-            // Normalize to the same string form used for reads.
             string ip = ipRaw.Trim();
             InMemoryFilteringEventStorageOptions options = _optionsMonitor.CurrentValue;
             long now = Environment.TickCount64;
 
-            // Fast path for DropNewEvents: if over limit, do not mutate state.
-            if (options.MemoryLimitBytes > 0 &&
-                options.OverflowBehavior == InMemoryFilteringEventStorageOverflowBehavior.DropNewEvents &&
-                Volatile.Read(ref _approxTotalBytes) >= options.MemoryLimitBytes)
+            _clearGate.EnterReadLock();
+            try
             {
-                ThrottledLogDrop(now, options);
-                return Task.CompletedTask;
+                // Fast path for DropNewEvents: if over limit, do not mutate state.
+                if (options.MemoryLimitBytes > 0 &&
+                    options.OverflowBehavior == InMemoryFilteringEventStorageOverflowBehavior.DropNewEvents &&
+                    Volatile.Read(ref _approxTotalBytes) >= options.MemoryLimitBytes)
+                {
+                    ThrottledLogDrop(now, options);
+                    return Task.CompletedTask;
+                }
+
+                // Retry loop covers races with evicted buckets.
+                for (; ; )
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    IpBucket bucket = GetOrCreateBucket(ip, now);
+
+                    bool needsEvictedCleanup;
+                    lock (bucket.Sync)
+                    {
+                        needsEvictedCleanup = bucket.IsEvicted != 0;
+
+                        if (!needsEvictedCleanup)
+                        {
+                            Volatile.Write(ref bucket.LastAccessTick, now);
+
+                            string source = (record.EventSource ?? string.Empty).Trim();
+                            FilterMatchKind kind = record.MatchKind;
+                            var key = (Source: source, Kind: kind);
+
+                            if (!bucket.Counts.TryGetValue(key, out var current))
+                            {
+                                bucket.Counts[key] = 1L;
+
+                                long delta = EstimateCountsEntryBytes(source);
+                                bucket.ApproxBytes += delta;
+                                Interlocked.Add(ref _approxTotalBytes, delta);
+                            }
+                            else
+                            {
+                                bucket.Counts[key] = current + 1L;
+                            }
+
+                            if (kind == FilterMatchKind.Blacklist)
+                            {
+                                bucket.BlacklistTotal++;
+                            }
+                            else if (kind == FilterMatchKind.Unmatched)
+                            {
+                                bucket.UnmatchedTotal++;
+                            }
+                        }
+                    }
+
+                    if (!needsEvictedCleanup)
+                    {
+                        break;
+                    }
+
+                    // Bucket was evicted; best-effort cleanup of the mapping (only one thread wins).
+                    TryRemoveBucketMapping(ip, bucket);
+                }
+
+                // Apply memory policy if we crossed the configured limit.
+                if (options.MemoryLimitBytes > 0 && Volatile.Read(ref _approxTotalBytes) > options.MemoryLimitBytes)
+                {
+                    switch (options.OverflowBehavior)
+                    {
+                        case InMemoryFilteringEventStorageOverflowBehavior.DropNewEvents:
+                            // Dropping is handled before writes, so do nothing here.
+                            break;
+
+                        case InMemoryFilteringEventStorageOverflowBehavior.ClearAll:
+                            // Option A: never clear from StoreAsync.
+                            // Treat "ClearAll" as "EvictOldestIpBuckets" and warn (throttled).
+                            ThrottledLogClearAllIgnored(now, options);
+                            ApplyMemoryLimitEvictOldest(options, ipToKeep: ip, now: now);
+                            break;
+
+                        case InMemoryFilteringEventStorageOverflowBehavior.EvictOldestIpBuckets:
+                        default:
+                            ApplyMemoryLimitEvictOldest(options, ipToKeep: ip, now: now);
+                            break;
+                    }
+                }
             }
-
-            // Get bucket for this IP; creating a bucket contributes to the approx total.
-            IpBucket bucket = GetOrCreateBucket(ip, now);
-
-            // If a trim pass removed this bucket concurrently, re-create.
-            if (Volatile.Read(ref bucket.IsEvicted) != 0)
+            finally
             {
-                bucket = GetOrCreateBucket(ip, now);
-            }
-
-            // Mark bucket as recently used (for LRU evictions).
-            Volatile.Write(ref bucket.LastAccessTick, now);
-
-            string source = (record.EventSource ?? string.Empty).Trim();
-            FilterMatchKind kind = record.MatchKind;
-
-            var key = (Source: source, Kind: kind);
-
-            // Detect first occurrence of a (source, kind) pair to model memory growth.
-            if (bucket.Counts.TryAdd(key, 1L))
-            {
-                long delta = EstimateCountsEntryBytes(source);
-                Interlocked.Add(ref bucket.ApproxBytes, delta);
-                Interlocked.Add(ref _approxTotalBytes, delta);
-            }
-            else
-            {
-                bucket.Counts.AddOrUpdate(key, 1L, static (_, current) => current + 1L);
-            }
-
-            // Maintain cheap per-kind totals for quick reads.
-            if (kind == FilterMatchKind.Blacklist)
-            {
-                Interlocked.Increment(ref bucket.BlacklistTotal);
-            }
-            else if (kind == FilterMatchKind.Unmatched)
-            {
-                Interlocked.Increment(ref bucket.UnmatchedTotal);
-            }
-
-            // Apply memory policy if we crossed the configured limit.
-            if (options.MemoryLimitBytes > 0 && Volatile.Read(ref _approxTotalBytes) > options.MemoryLimitBytes)
-            {
-                ApplyMemoryLimit(options, ip, now);
+                _clearGate.ExitReadLock();
             }
 
             return Task.CompletedTask;
-        }
-
-        /// <inheritdoc />
-        public IReadOnlyCollection<FilteringEventBySourceAndMatchAggregate> GetByEventSourceAndMatchKind(string remoteIpAddress)
-        {
-            if (string.IsNullOrWhiteSpace(remoteIpAddress))
-            {
-                return Array.Empty<FilteringEventBySourceAndMatchAggregate>();
-            }
-
-            var ip = remoteIpAddress.Trim();
-            if (!_byIp.TryGetValue(ip, out var bucket))
-            {
-                return Array.Empty<FilteringEventBySourceAndMatchAggregate>();
-            }
-
-            // Reads also update LRU access to prevent frequently-queried IPs from being evicted.
-            Touch(bucket);
-
-            var results = new List<FilteringEventBySourceAndMatchAggregate>();
-            foreach (var kvp in bucket.Counts)
-            {
-                results.Add(new FilteringEventBySourceAndMatchAggregate(ip, kvp.Key.Source, kvp.Key.Kind, kvp.Value));
-            }
-
-            return results.Count == 0 ? Array.Empty<FilteringEventBySourceAndMatchAggregate>() : results;
-        }
-
-        /// <inheritdoc />
-        public IReadOnlyCollection<FilteringEventBySourceAggregate> GetByEventSource(string remoteIpAddress)
-        {
-            if (string.IsNullOrWhiteSpace(remoteIpAddress))
-            {
-                return Array.Empty<FilteringEventBySourceAggregate>();
-            }
-
-            var ip = remoteIpAddress.Trim();
-            if (!_byIp.TryGetValue(ip, out var bucket))
-            {
-                return Array.Empty<FilteringEventBySourceAggregate>();
-            }
-
-            Touch(bucket);
-
-            // Aggregate across match kinds by source.
-            var totals = new Dictionary<string, long>(StringComparer.Ordinal);
-            foreach (var kvp in bucket.Counts)
-            {
-                var source = kvp.Key.Source;
-                if (totals.TryGetValue(source, out var current))
-                {
-                    totals[source] = current + kvp.Value;
-                }
-                else
-                {
-                    totals.Add(source, kvp.Value);
-                }
-            }
-
-            if (totals.Count == 0)
-            {
-                return Array.Empty<FilteringEventBySourceAggregate>();
-            }
-
-            var results = new List<FilteringEventBySourceAggregate>(totals.Count);
-            foreach (var entry in totals)
-            {
-                results.Add(new FilteringEventBySourceAggregate(ip, entry.Key, entry.Value));
-            }
-
-            return results;
-        }
-
-        /// <inheritdoc />
-        public IReadOnlyCollection<FilteringEventByMatchAggregate> GetByMatchKind(string remoteIpAddress)
-        {
-            if (string.IsNullOrWhiteSpace(remoteIpAddress))
-            {
-                return Array.Empty<FilteringEventByMatchAggregate>();
-            }
-
-            var ip = remoteIpAddress.Trim();
-            if (!_byIp.TryGetValue(ip, out var bucket))
-            {
-                return Array.Empty<FilteringEventByMatchAggregate>();
-            }
-
-            Touch(bucket);
-
-            // Aggregate across sources by match kind.
-            var totals = new Dictionary<FilterMatchKind, long>();
-            foreach (var kvp in bucket.Counts)
-            {
-                var kind = kvp.Key.Kind;
-                if (totals.TryGetValue(kind, out var current))
-                {
-                    totals[kind] = current + kvp.Value;
-                }
-                else
-                {
-                    totals.Add(kind, kvp.Value);
-                }
-            }
-
-            if (totals.Count == 0)
-            {
-                return Array.Empty<FilteringEventByMatchAggregate>();
-            }
-
-            var results = new List<FilteringEventByMatchAggregate>(totals.Count);
-            foreach (var entry in totals)
-            {
-                results.Add(new FilteringEventByMatchAggregate(ip, entry.Key, entry.Value));
-            }
-
-            return results;
-        }
-
-        /// <inheritdoc />
-        public int GetUnmatchedCount(string remoteIpAddress)
-        {
-            if (string.IsNullOrWhiteSpace(remoteIpAddress))
-            {
-                return 0;
-            }
-
-            var ip = remoteIpAddress.Trim();
-            if (!_byIp.TryGetValue(ip, out var bucket))
-            {
-                return 0;
-            }
-
-            Touch(bucket);
-
-            // Saturate to int for consumer friendliness.
-            var total = Volatile.Read(ref bucket.UnmatchedTotal);
-            return total > int.MaxValue ? int.MaxValue : (int)total;
         }
 
         /// <inheritdoc />
@@ -316,16 +234,543 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             }
 
             var ip = remoteIpAddress.Trim();
-            if (!_byIp.TryGetValue(ip, out var bucket))
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return 0;
+                }
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0)
+                    {
+                        return 0;
+                    }
+
+                    Volatile.Write(ref bucket.LastAccessTick, Environment.TickCount64);
+
+                    long total = bucket.BlacklistTotal;
+                    if (total <= 0) return 0;
+                    return total > int.MaxValue ? int.MaxValue : (int)total;
+                }
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public int GetUnmatchedCount(string remoteIpAddress)
+        {
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
             {
                 return 0;
             }
 
-            Touch(bucket);
+            var ip = remoteIpAddress.Trim();
 
-            // Saturate to int for consumer friendliness.
-            var total = Volatile.Read(ref bucket.BlacklistTotal);
-            return total > int.MaxValue ? int.MaxValue : (int)total;
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return 0;
+                }
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0)
+                    {
+                        return 0;
+                    }
+
+                    Volatile.Write(ref bucket.LastAccessTick, Environment.TickCount64);
+
+                    long total = bucket.UnmatchedTotal;
+                    if (total <= 0) return 0;
+                    return total > int.MaxValue ? int.MaxValue : (int)total;
+                }
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyCollection<FilteringEventBySourceAndMatchAggregate> GetByEventSourceAndMatchKind(string remoteIpAddress)
+        {
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
+            {
+                return Array.Empty<FilteringEventBySourceAndMatchAggregate>();
+            }
+
+            var ip = remoteIpAddress.Trim();
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return Array.Empty<FilteringEventBySourceAndMatchAggregate>();
+                }
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0 || bucket.Counts.IsEmpty)
+                    {
+                        return Array.Empty<FilteringEventBySourceAndMatchAggregate>();
+                    }
+
+                    Volatile.Write(ref bucket.LastAccessTick, Environment.TickCount64);
+
+                    var results = new List<FilteringEventBySourceAndMatchAggregate>(bucket.Counts.Count);
+                    foreach (var kvp in bucket.Counts)
+                    {
+                        results.Add(new FilteringEventBySourceAndMatchAggregate(ip, kvp.Key.Source, kvp.Key.Kind, kvp.Value));
+                    }
+
+                    return results.Count == 0 ? Array.Empty<FilteringEventBySourceAndMatchAggregate>() : results;
+                }
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyCollection<FilteringEventBySourceAggregate> GetByEventSource(string remoteIpAddress)
+        {
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
+            {
+                return Array.Empty<FilteringEventBySourceAggregate>();
+            }
+
+            var ip = remoteIpAddress.Trim();
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return Array.Empty<FilteringEventBySourceAggregate>();
+                }
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0 || bucket.Counts.IsEmpty)
+                    {
+                        return Array.Empty<FilteringEventBySourceAggregate>();
+                    }
+
+                    Volatile.Write(ref bucket.LastAccessTick, Environment.TickCount64);
+
+                    var totals = new Dictionary<string, long>(StringComparer.Ordinal);
+                    foreach (var kvp in bucket.Counts)
+                    {
+                        var source = kvp.Key.Source;
+                        if (totals.TryGetValue(source, out var current))
+                        {
+                            totals[source] = current + kvp.Value;
+                        }
+                        else
+                        {
+                            totals.Add(source, kvp.Value);
+                        }
+                    }
+
+                    if (totals.Count == 0)
+                    {
+                        return Array.Empty<FilteringEventBySourceAggregate>();
+                    }
+
+                    var results = new List<FilteringEventBySourceAggregate>(totals.Count);
+                    foreach (var entry in totals)
+                    {
+                        results.Add(new FilteringEventBySourceAggregate(ip, entry.Key, entry.Value));
+                    }
+
+                    return results;
+                }
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyCollection<FilteringEventByMatchAggregate> GetByMatchKind(string remoteIpAddress)
+        {
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
+            {
+                return Array.Empty<FilteringEventByMatchAggregate>();
+            }
+
+            var ip = remoteIpAddress.Trim();
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return Array.Empty<FilteringEventByMatchAggregate>();
+                }
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0 || bucket.Counts.IsEmpty)
+                    {
+                        return Array.Empty<FilteringEventByMatchAggregate>();
+                    }
+
+                    Volatile.Write(ref bucket.LastAccessTick, Environment.TickCount64);
+
+                    var totals = new Dictionary<FilterMatchKind, long>();
+                    foreach (var kvp in bucket.Counts)
+                    {
+                        var kind = kvp.Key.Kind;
+                        if (totals.TryGetValue(kind, out var current))
+                        {
+                            totals[kind] = current + kvp.Value;
+                        }
+                        else
+                        {
+                            totals.Add(kind, kvp.Value);
+                        }
+                    }
+
+                    if (totals.Count == 0)
+                    {
+                        return Array.Empty<FilteringEventByMatchAggregate>();
+                    }
+
+                    var results = new List<FilteringEventByMatchAggregate>(totals.Count);
+                    foreach (var entry in totals)
+                    {
+                        results.Add(new FilteringEventByMatchAggregate(ip, entry.Key, entry.Value));
+                    }
+
+                    return results;
+                }
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
+            {
+                return Task.FromResult(false);
+            }
+
+            var ip = remoteIpAddress.Trim();
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return Task.FromResult(false);
+                }
+
+                bool markedEvicted;
+                lock (bucket.Sync)
+                {
+                    markedEvicted = bucket.IsEvicted == 0;
+                    bucket.IsEvicted = 1;
+                }
+
+                if (!markedEvicted)
+                {
+                    return Task.FromResult(false);
+                }
+
+                return Task.FromResult(TryRemoveBucketMapping(ip, bucket));
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, string eventSource, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
+            {
+                return Task.FromResult(false);
+            }
+
+            var ip = remoteIpAddress.Trim();
+            string source = (eventSource ?? string.Empty).Trim();
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return Task.FromResult(false);
+                }
+
+                bool removedAny = false;
+                bool removeBucket = false;
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0)
+                    {
+                        return Task.FromResult(false);
+                    }
+
+                    int i = 0;
+                    foreach (var kvp in bucket.Counts)
+                    {
+                        if ((++i & 0x3F) == 0)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                        }
+
+                        if (!string.Equals(kvp.Key.Source, source, StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        if (bucket.Counts.TryRemove(kvp.Key, out var removedCount))
+                        {
+                            removedAny = true;
+
+                            if (kvp.Key.Kind == FilterMatchKind.Blacklist)
+                            {
+                                bucket.BlacklistTotal -= removedCount;
+                                if (bucket.BlacklistTotal < 0) bucket.BlacklistTotal = 0;
+                            }
+                            else if (kvp.Key.Kind == FilterMatchKind.Unmatched)
+                            {
+                                bucket.UnmatchedTotal -= removedCount;
+                                if (bucket.UnmatchedTotal < 0) bucket.UnmatchedTotal = 0;
+                            }
+
+                            long delta = EstimateCountsEntryBytes(kvp.Key.Source);
+                            bucket.ApproxBytes -= delta;
+                            Interlocked.Add(ref _approxTotalBytes, -delta);
+                        }
+                    }
+
+                    if (bucket.Counts.IsEmpty)
+                    {
+                        bucket.IsEvicted = 1;
+                        removeBucket = true;
+                    }
+                }
+
+                if (removeBucket)
+                {
+                    TryRemoveBucketMapping(ip, bucket);
+                }
+
+                return Task.FromResult(removedAny);
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, FilterMatchKind matchKind, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
+            {
+                return Task.FromResult(false);
+            }
+
+            var ip = remoteIpAddress.Trim();
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return Task.FromResult(false);
+                }
+
+                bool removedAny = false;
+                bool removeBucket = false;
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0)
+                    {
+                        return Task.FromResult(false);
+                    }
+
+                    int i = 0;
+                    foreach (var kvp in bucket.Counts)
+                    {
+                        if ((++i & 0x3F) == 0)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                        }
+
+                        if (kvp.Key.Kind != matchKind)
+                        {
+                            continue;
+                        }
+
+                        if (bucket.Counts.TryRemove(kvp.Key, out var removedCount))
+                        {
+                            removedAny = true;
+
+                            if (matchKind == FilterMatchKind.Blacklist)
+                            {
+                                bucket.BlacklistTotal -= removedCount;
+                                if (bucket.BlacklistTotal < 0) bucket.BlacklistTotal = 0;
+                            }
+                            else if (matchKind == FilterMatchKind.Unmatched)
+                            {
+                                bucket.UnmatchedTotal -= removedCount;
+                                if (bucket.UnmatchedTotal < 0) bucket.UnmatchedTotal = 0;
+                            }
+
+                            long delta = EstimateCountsEntryBytes(kvp.Key.Source);
+                            bucket.ApproxBytes -= delta;
+                            Interlocked.Add(ref _approxTotalBytes, -delta);
+                        }
+                    }
+
+                    if (bucket.Counts.IsEmpty)
+                    {
+                        bucket.IsEvicted = 1;
+                        removeBucket = true;
+                    }
+                }
+
+                if (removeBucket)
+                {
+                    TryRemoveBucketMapping(ip, bucket);
+                }
+
+                return Task.FromResult(removedAny);
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public Task<bool> RemoveByRemoteIpAddressAsync(string remoteIpAddress, string eventSource, FilterMatchKind matchKind, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(remoteIpAddress))
+            {
+                return Task.FromResult(false);
+            }
+
+            var ip = remoteIpAddress.Trim();
+            string source = (eventSource ?? string.Empty).Trim();
+            var key = (Source: source, Kind: matchKind);
+
+            _clearGate.EnterReadLock();
+            try
+            {
+                if (!_byIp.TryGetValue(ip, out var bucket))
+                {
+                    return Task.FromResult(false);
+                }
+
+                bool removeBucket = false;
+
+                lock (bucket.Sync)
+                {
+                    if (bucket.IsEvicted != 0)
+                    {
+                        return Task.FromResult(false);
+                    }
+
+                    if (!bucket.Counts.TryRemove(key, out var removedCount))
+                    {
+                        return Task.FromResult(false);
+                    }
+
+                    if (matchKind == FilterMatchKind.Blacklist)
+                    {
+                        bucket.BlacklistTotal -= removedCount;
+                        if (bucket.BlacklistTotal < 0) bucket.BlacklistTotal = 0;
+                    }
+                    else if (matchKind == FilterMatchKind.Unmatched)
+                    {
+                        bucket.UnmatchedTotal -= removedCount;
+                        if (bucket.UnmatchedTotal < 0) bucket.UnmatchedTotal = 0;
+                    }
+
+                    long delta = EstimateCountsEntryBytes(source);
+                    bucket.ApproxBytes -= delta;
+                    Interlocked.Add(ref _approxTotalBytes, -delta);
+
+                    if (bucket.Counts.IsEmpty)
+                    {
+                        bucket.IsEvicted = 1;
+                        removeBucket = true;
+                    }
+                }
+
+                if (removeBucket)
+                {
+                    TryRemoveBucketMapping(ip, bucket);
+                }
+
+                return Task.FromResult(true);
+            }
+            finally
+            {
+                _clearGate.ExitReadLock();
+            }
+        }
+
+        /// <inheritdoc />
+        public Task ClearAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            _clearGate.EnterWriteLock();
+            try
+            {
+                foreach (var kvp in _byIp)
+                {
+                    var bucket = kvp.Value;
+                    lock (bucket.Sync)
+                    {
+                        bucket.IsEvicted = 1;
+                    }
+                }
+
+                _byIp.Clear();
+                Volatile.Write(ref _approxTotalBytes, 0);
+
+                return Task.CompletedTask;
+            }
+            finally
+            {
+                _clearGate.ExitWriteLock();
+            }
         }
 
         private void OnOptionsChanged(InMemoryFilteringEventStorageOptions options)
@@ -352,20 +797,13 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
                 () => o.MaxEvictionsPerTrim);
         }
 
-        private static void Touch(IpBucket bucket)
-        {
-            Volatile.Write(ref bucket.LastAccessTick, Environment.TickCount64);
-        }
-
         private IpBucket GetOrCreateBucket(string ip, long now)
         {
-            // Hot path: existing bucket.
             if (_byIp.TryGetValue(ip, out var existing))
             {
                 return existing;
             }
 
-            // Slow path: create and race-add.
             for (; ; )
             {
                 var created = new IpBucket
@@ -376,7 +814,6 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
 
                 if (_byIp.TryAdd(ip, created))
                 {
-                    // First time this IP is seen: account for approximate memory.
                     Interlocked.Add(ref _approxTotalBytes, created.ApproxBytes);
                     return created;
                 }
@@ -388,16 +825,31 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             }
         }
 
-        private void ApplyMemoryLimit(InMemoryFilteringEventStorageOptions options, string ipToKeep, long now)
+        private bool TryRemoveBucketMapping(string ip, IpBucket bucket)
         {
-            // Guard against over-trimming during sustained load.
+            if (_byIp.TryRemove(new KeyValuePair<string, IpBucket>(ip, bucket)))
+            {
+                long removedBytes;
+                lock (bucket.Sync)
+                {
+                    removedBytes = bucket.ApproxBytes;
+                }
+
+                Interlocked.Add(ref _approxTotalBytes, -removedBytes);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ApplyMemoryLimitEvictOldest(InMemoryFilteringEventStorageOptions options, string ipToKeep, long now)
+        {
             long last = Volatile.Read(ref _lastTrimTick);
             if (now - last < (long)options.TrimCooldown.TotalMilliseconds)
             {
                 return;
             }
 
-            // Only one trimming thread at a time.
             if (Interlocked.CompareExchange(ref _trimInProgress, 1, 0) != 0)
             {
                 return;
@@ -406,28 +858,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             try
             {
                 Volatile.Write(ref _lastTrimTick, now);
-
-                switch (options.OverflowBehavior)
-                {
-                    case InMemoryFilteringEventStorageOverflowBehavior.ClearAll:
-                        _logger.LogWarning(
-                            "In-memory filtering store cleared all data because MemoryLimitBytes={MemoryLimitBytes} was exceeded. ApproxTotalBytes={ApproxTotalBytes}.",
-                            () => options.MemoryLimitBytes,
-                            () => Volatile.Read(ref _approxTotalBytes));
-
-                        _byIp.Clear();
-                        Volatile.Write(ref _approxTotalBytes, 0);
-                        return;
-
-                    case InMemoryFilteringEventStorageOverflowBehavior.DropNewEvents:
-                        // StoreAsync handles the dropping behavior and warning throttling.
-                        return;
-
-                    case InMemoryFilteringEventStorageOverflowBehavior.EvictOldestIpBuckets:
-                    default:
-                        EvictOldestUntilUnderTarget(options, ipToKeep);
-                        return;
-                }
+                EvictOldestUntilUnderTarget(options, ipToKeep);
             }
             finally
             {
@@ -443,7 +874,6 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
                 return;
             }
 
-            // Clamp ratio defensively to avoid weird targets.
             double ratio = options.TrimTargetRatio;
             if (ratio <= 0.10) ratio = 0.10;
             if (ratio > 1.0) ratio = 1.0;
@@ -451,8 +881,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             long target = (long)(limit * ratio);
             long before = Volatile.Read(ref _approxTotalBytes);
 
-            // Collect LRU candidates (bounded scan to cap time under huge stores).
-            var candidates = new List<(string Ip, long LastAccess, long Bytes)>(capacity: 1024);
+            var candidates = new List<(string Ip, long LastAccess)>(capacity: 1024);
 
             int scanned = 0;
             foreach (var kvp in _byIp)
@@ -464,17 +893,13 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
 
                 scanned++;
 
-                // Prefer not to evict the IP that just wrote (keeps behavior stable under steady traffic).
                 if (string.Equals(kvp.Key, ipToKeep, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
                 var bucket = kvp.Value;
-                candidates.Add((
-                    kvp.Key,
-                    Volatile.Read(ref bucket.LastAccessTick),
-                    Volatile.Read(ref bucket.ApproxBytes)));
+                candidates.Add((kvp.Key, Volatile.Read(ref bucket.LastAccessTick)));
             }
 
             if (candidates.Count == 0)
@@ -482,7 +907,6 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
                 return;
             }
 
-            // Oldest first.
             candidates.Sort(static (a, b) => a.LastAccess.CompareTo(b.LastAccess));
 
             int evicted = 0;
@@ -500,14 +924,25 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
 
                 string ip = candidates[i].Ip;
 
-                if (_byIp.TryRemove(ip, out var removed))
+                if (!_byIp.TryGetValue(ip, out var bucket))
                 {
-                    // Mark as evicted so a concurrent StoreAsync can re-create cleanly.
-                    Interlocked.Exchange(ref removed.IsEvicted, 1);
+                    continue;
+                }
 
-                    long removedBytes = Volatile.Read(ref removed.ApproxBytes);
-                    Interlocked.Add(ref _approxTotalBytes, -removedBytes);
+                bool markedEvicted;
+                lock (bucket.Sync)
+                {
+                    markedEvicted = bucket.IsEvicted == 0;
+                    bucket.IsEvicted = 1;
+                }
 
+                if (!markedEvicted)
+                {
+                    continue;
+                }
+
+                if (TryRemoveBucketMapping(ip, bucket))
+                {
                     evicted++;
                 }
             }
@@ -537,7 +972,6 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
 
         private void ThrottledLogDrop(long now, InMemoryFilteringEventStorageOptions options)
         {
-            // Avoid spamming logs if the system is under sustained memory pressure.
             const long throttleMs = 5_000;
 
             long last = Volatile.Read(ref _lastDropLogTick);
@@ -555,17 +989,33 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
             }
         }
 
+        private void ThrottledLogClearAllIgnored(long now, InMemoryFilteringEventStorageOptions options)
+        {
+            const long throttleMs = 30_000;
+
+            long last = Volatile.Read(ref _lastClearAllIgnoredLogTick);
+            if (now - last < throttleMs)
+            {
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref _lastClearAllIgnoredLogTick, now, last) == last)
+            {
+                _logger.LogWarning(
+                    "In-memory filtering store is configured with OverflowBehavior=ClearAll, but ClearAll is ignored in StoreAsync (Option A). Falling back to EvictOldestIpBuckets. MemoryLimitBytes={MemoryLimitBytes}, ApproxTotalBytes={ApproxTotalBytes}.",
+                    () => options.MemoryLimitBytes,
+                    () => Volatile.Read(ref _approxTotalBytes));
+            }
+        }
+
         private static long EstimateStringBytes(string value)
         {
             if (value is null) return 0;
-
-            // Rough model: object header + character payload (UTF-16, 2 bytes per char).
             return ApproxStringOverheadBytes + ((long)value.Length * 2L);
         }
 
         private static long EstimateCountsEntryBytes(string source)
         {
-            // Rough model: dictionary entry + tuple key + referenced string.
             return ApproxCountsEntryOverheadBytes + EstimateStringBytes(source);
         }
     }

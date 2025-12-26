@@ -18,8 +18,13 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         EvictOldestIpBuckets = 1,
 
         /// <summary>
-        /// Clears all stored data when the limit is reached.
+        /// Clears all stored data.
         /// </summary>
+        /// <remarks>
+        /// Reviewer note: In the current in-memory implementation, this value is treated as a configuration
+        /// signal only and is not executed as a side effect of <c>StoreAsync</c>. Wiping the dataset is
+        /// intentionally reserved for explicit administrative calls to <c>ClearAsync</c>.
+        /// </remarks>
         ClearAll = 2,
     }
 

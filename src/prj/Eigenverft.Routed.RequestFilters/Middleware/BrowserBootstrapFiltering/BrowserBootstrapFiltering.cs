@@ -1,45 +1,38 @@
 ﻿using System;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpResponseExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
+using Eigenverft.Routed.RequestFilters.GenericExtensions.StringExtensions;
 using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
-using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 {
     /// <summary>
-    /// Middleware that requires a simple “browser bootstrap” signal (cookie) before allowing access to in-scope paths.
+    /// Middleware that enforces a “browser bootstrap” (JavaScript + cookie write)
+    /// for configured HTML entry paths.
     /// </summary>
     /// <remarks>
-    /// Reviewer note: This implementation preserves the originally requested target via a <c>to</c> query parameter on
-    /// internal outcome endpoints. A single-shot loop breaker is implemented using a private query flag appended only on
-    /// the failure outcome redirect, so clients that cannot set cookies do not get stuck in infinite bootstrap loops.
+    /// Reviewer note:
+    /// - Only applies to GET/HEAD requests whose path matches <see cref="BrowserBootstrapFilteringOptions.HtmlProtectedBootstrapScopePathPatterns"/>.
+    /// - If the bootstrap cookie is missing/invalid, a loading HTML page (200) is served (no server redirects).
+    /// - A browser with JavaScript and cookies enabled will set the cookie and reload.
+    /// - curl and other non-JS clients remain on the loading page.
     /// </remarks>
     public sealed class BrowserBootstrapFiltering
     {
-        private const string BootstrapCookieValue = "1";
-
-        private const string BootstrapContinuePath = "/_bootstrap/continue";
-        private const string BootstrapFailurePath = "/_bootstrap/fail";
-
-        private const string OutcomeTargetQueryKey = "to";
-
-        // One-shot loop breaker flag (added only on the "fail" redirect target).
-        private const string BootstrapAttemptFlagKey = "__evf_bootstrap_attempt";
-        private const string BootstrapAttemptFlagValue = "1";
+        private const string TokenVersion = "v2";
 
         private readonly RequestDelegate _next;
         private readonly IDeferredLogger<BrowserBootstrapFiltering> _logger;
         private readonly IOptionsMonitor<BrowserBootstrapFilteringOptions> _optionsMonitor;
-        private readonly IFilteringEventStorage _filteringEventStorage;
+        private readonly IDataProtector _protector;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BrowserBootstrapFiltering"/> class.
@@ -48,12 +41,13 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
             RequestDelegate nextMiddleware,
             IDeferredLogger<BrowserBootstrapFiltering> logger,
             IOptionsMonitor<BrowserBootstrapFilteringOptions> optionsMonitor,
-            IFilteringEventStorage filteringEventStorage)
+            IDataProtectionProvider dataProtectionProvider)
         {
             _next = nextMiddleware ?? throw new ArgumentNullException(nameof(nextMiddleware));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _optionsMonitor = optionsMonitor ?? throw new ArgumentNullException(nameof(optionsMonitor));
-            _filteringEventStorage = filteringEventStorage ?? throw new ArgumentNullException(nameof(filteringEventStorage));
+            _protector = (dataProtectionProvider ?? throw new ArgumentNullException(nameof(dataProtectionProvider)))
+                .CreateProtector("Eigenverft.BrowserBootstrapFiltering.CookieToken.v2");
 
             _optionsMonitor.OnChange(_ => _logger.LogDebug(
                 "Configuration for {MiddlewareName} updated.",
@@ -61,367 +55,88 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
         }
 
         /// <summary>
-        /// Processes the current request and either forwards it, returns the bootstrap attempt HTML,
-        /// or handles one of the bootstrap outcome endpoints.
+        /// Processes the current request and either forwards it or serves bootstrap HTML for in-scope paths.
         /// </summary>
         public async Task InvokeAsync(HttpContext context)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
 
+            var req = context.Request;
+
+            // Only meaningful for document-like navigations.
+            if (!HttpMethods.IsGet(req.Method) && !HttpMethods.IsHead(req.Method))
+            {
+                await _next(context);
+                return;
+            }
+
             BrowserBootstrapFilteringOptions options = _optionsMonitor.CurrentValue;
 
-            // Only meaningful for “document-like” navigations.
-            if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+            string path = req.Path.HasValue ? req.Path.Value! : string.Empty;
+            if (!IsInScope(path, options))
             {
                 await _next(context);
                 return;
             }
 
-            PathString path = context.Request.Path;
-
-            // Outcome endpoints (internal) are handled first.
-            if (IsPath(path, BootstrapContinuePath, options.CaseSensitivePaths))
-            {
-                await HandleBootstrapContinueAsync(context, options);
-                return;
-            }
-
-            if (IsPath(path, BootstrapFailurePath, options.CaseSensitivePaths))
-            {
-                await HandleBootstrapFailureAsync(context, options);
-                return;
-            }
-
             string trace = context.TraceIdentifier;
-            string observedPath = path.HasValue ? path.Value! : string.Empty;
 
-            // ----------------------------------------------------------------
-            // Stage 1: Classify the path (wildcards + exact entries supported)
-            // ----------------------------------------------------------------
-            FilterMatchKind matchKind = ClassifyPath(observedPath, options);
+            LogScopeIfEnabled(options, trace, path);
 
-            if (matchKind == FilterMatchKind.Blacklist)
+            if (TryValidateBootstrapCookie(req, options, out _))
             {
-                await HandleBootstrapExceptionPathAsync(context, options, trace, observedPath);
-                return;
-            }
-
-            if (matchKind == FilterMatchKind.Unmatched)
-            {
-                await HandleUnmatchedPathAsync(context, options, trace, observedPath);
-                return;
-            }
-
-            if (matchKind != FilterMatchKind.Whitelist)
-            {
-                _logger.LogCritical(
-                    "ATTENTION: {MiddlewareName} received an unexpected {EnumType} value '{EnumValue}'. This should not happen.",
+                LogIfEnabled(
+                    options.LogLevelBootstrapPassed,
+                    "{Middleware} action={Action} observed={Observed} trace={Trace}",
                     () => nameof(BrowserBootstrapFiltering),
-                    () => nameof(FilterMatchKind),
-                    () => matchKind);
+                    () => "BootstrapPassed",
+                    () => path,
+                    () => trace);
 
                 await _next(context);
                 return;
             }
 
-            // Optional: classification-only log for “scope”.
-            LogScopeClassificationIfEnabled(options, trace, observedPath);
+            LogIfEnabled(
+                options.LogLevelBootstrapServed,
+                "{Middleware} action={Action} observed={Observed} trace={Trace}",
+                () => nameof(BrowserBootstrapFiltering),
+                () => "BootstrapServed",
+                () => path,
+                () => trace);
 
-            // ----------------------------------------------------------------
-            // Stage 2: Scope => require cookie or serve bootstrap attempt HTML
-            // ----------------------------------------------------------------
-
-            // Cookie present => allow straight through.
-            if (HasValidBootstrapCookie(context, options))
+            if (HttpMethods.IsHead(req.Method))
             {
-                // Clean up the one-shot attempt flag if it is present, so downstream does not see it.
-                if (HasBootstrapAttemptFlag(context))
-                {
-                    RemoveBootstrapAttemptFlagFromQuery(context);
-                }
-
-                FilterDecisionLogEntry okLog = FilterDecisionLogBuilder.Create(
-                    nameof(BrowserBootstrapFiltering),
-                    trace,
-                    FilterMatchKind.Whitelist,
-                    isAllowed: true,
-                    observedValue: observedPath,
-                    loggedForEvaluator: false,
-                    logLevelWhitelist: options.LogLevelAllowedRequests,
-                    logLevelBlacklist: options.LogLevelAllowedRequests,
-                    logLevelUnmatched: options.LogLevelAllowedRequests);
-
-                if (okLog.Level != LogLevel.None && _logger.IsEnabled(okLog.Level))
-                {
-                    _logger.Log(okLog.Level, okLog.MessageTemplate, okLog.Args);
-                }
-
-                await _next(context);
+                ApplyBootstrapResponseHeaders(context.Response);
+                context.Response.StatusCode = StatusCodes.Status200OK;
                 return;
             }
 
-            // One-shot loop breaker:
-            // If we already attempted bootstrap once for this target and still have no cookie, do not serve the HTML again.
-            if (HasBootstrapAttemptFlag(context))
-            {
-                await HandleScopeBootstrapFailureAfterAttemptAsync(context, options, trace);
-                return;
-            }
-
-            // Cookie missing/invalid => serve bootstrap attempt HTML (not the enforcement decision).
-            LogBootstrapAttempt(trace, observedPath, options);
-
-            string originalTarget = BuildOriginalTargetOrThrow(context);
-            await WriteBootstrapAttemptHtmlAsync(context, options, originalTarget);
+            string cookieToken = MintCookieToken(req, options);
+            await WriteBootstrapHtmlAsync(context, options, cookieToken);
         }
 
-        private async Task HandleBootstrapExceptionPathAsync(HttpContext context, BrowserBootstrapFilteringOptions options, string trace, string observedPath)
+        private static bool IsInScope(string path, BrowserBootstrapFilteringOptions options)
         {
-            if (options.RecordRequestsOnBootstrapExceptionPaths)
+            if (string.IsNullOrEmpty(path))
             {
-                await _filteringEventStorage.StoreAsync(new FilteringEvent
-                {
-                    TimestampUtc = DateTime.UtcNow,
-                    EventSource = nameof(BrowserBootstrapFiltering),
-                    MatchKind = FilterMatchKind.Blacklist,
-                    RemoteIpAddress = context.GetRemoteIpAddress(),
-                    ObservedValue = observedPath
-                });
+                return false;
             }
 
-            bool isAllowed = options.AllowRequestsOnBootstrapExceptionPaths;
-
-            FilterDecisionLogEntry log = FilterDecisionLogBuilder.Create(
-                nameof(BrowserBootstrapFiltering),
-                trace,
-                FilterMatchKind.Blacklist,
-                isAllowed,
-                observedValue: observedPath,
-                loggedForEvaluator: options.RecordRequestsOnBootstrapExceptionPaths,
-                logLevelWhitelist: options.LogLevelBootstrapScopePaths,
-                logLevelBlacklist: options.LogLevelBootstrapExceptionPaths,
-                logLevelUnmatched: options.LogLevelUnmatchedPaths);
-
-            if (log.Level != LogLevel.None && _logger.IsEnabled(log.Level))
+            string[] patterns = options.HtmlProtectedBootstrapScopePathPatterns?.ToArray() ?? Array.Empty<string>();
+            if (patterns.Length == 0)
             {
-                _logger.Log(log.Level, log.MessageTemplate, log.Args);
+                return false;
             }
 
-            if (isAllowed)
-            {
-                await _next(context);
-                return;
-            }
-
-            await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
+            // Reviewer note: This slimmed version always matches case-insensitively.
+            return path.MatchesAnyPattern(patterns, ignoreCase: true);
         }
 
-        private async Task HandleUnmatchedPathAsync(HttpContext context, BrowserBootstrapFilteringOptions options, string trace, string observedPath)
-        {
-            if (options.RecordRequestsOnUnmatchedPaths)
-            {
-                await _filteringEventStorage.StoreAsync(new FilteringEvent
-                {
-                    TimestampUtc = DateTime.UtcNow,
-                    EventSource = nameof(BrowserBootstrapFiltering),
-                    MatchKind = FilterMatchKind.Unmatched,
-                    RemoteIpAddress = context.GetRemoteIpAddress(),
-                    ObservedValue = observedPath
-                });
-            }
-
-            bool isAllowed = options.AllowRequestsOnUnmatchedPaths;
-
-            FilterDecisionLogEntry log = FilterDecisionLogBuilder.Create(
-                nameof(BrowserBootstrapFiltering),
-                trace,
-                FilterMatchKind.Unmatched,
-                isAllowed,
-                observedValue: observedPath,
-                loggedForEvaluator: options.RecordRequestsOnUnmatchedPaths,
-                logLevelWhitelist: options.LogLevelBootstrapScopePaths,
-                logLevelBlacklist: options.LogLevelBootstrapExceptionPaths,
-                logLevelUnmatched: options.LogLevelUnmatchedPaths);
-
-            if (log.Level != LogLevel.None && _logger.IsEnabled(log.Level))
-            {
-                _logger.Log(log.Level, log.MessageTemplate, log.Args);
-            }
-
-            if (isAllowed)
-            {
-                await _next(context);
-                return;
-            }
-
-            await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
-        }
-
-        private async Task HandleBootstrapContinueAsync(HttpContext context, BrowserBootstrapFilteringOptions options)
-        {
-            string trace = context.TraceIdentifier;
-
-            if (!TryGetSafeOutcomeTarget(context, out string target))
-            {
-                await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
-                return;
-            }
-
-            if (HasValidBootstrapCookie(context, options))
-            {
-                FilterDecisionLogEntry okLog = FilterDecisionLogBuilder.Create(
-                    nameof(BrowserBootstrapFiltering),
-                    trace,
-                    FilterMatchKind.Whitelist,
-                    isAllowed: true,
-                    observedValue: target,
-                    loggedForEvaluator: false,
-                    logLevelWhitelist: options.LogLevelAllowedRequests,
-                    logLevelBlacklist: options.LogLevelAllowedRequests,
-                    logLevelUnmatched: options.LogLevelAllowedRequests);
-
-                if (okLog.Level != LogLevel.None && _logger.IsEnabled(okLog.Level))
-                {
-                    _logger.Log(okLog.Level, okLog.MessageTemplate, okLog.Args);
-                }
-
-                context.Response.Redirect(target, permanent: false);
-                return;
-            }
-
-            // Cookie still missing at “continue” => treat as bootstrap failure.
-            await HandleBootstrapFailureAsync(context, options);
-        }
-
-        private async Task HandleBootstrapFailureAsync(HttpContext context, BrowserBootstrapFilteringOptions options)
-        {
-            string trace = context.TraceIdentifier;
-
-            if (!TryGetSafeOutcomeTarget(context, out string target))
-            {
-                await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
-                return;
-            }
-
-            if (options.RecordRequiredPathsOnBootstrapFailure)
-            {
-                await _filteringEventStorage.StoreAsync(new FilteringEvent
-                {
-                    TimestampUtc = DateTime.UtcNow,
-                    EventSource = nameof(BrowserBootstrapFiltering),
-                    MatchKind = FilterMatchKind.Unmatched,
-                    RemoteIpAddress = context.GetRemoteIpAddress(),
-                    ObservedValue = target
-                });
-            }
-
-            bool isAllowed = options.AllowRequiredPathsOnBootstrapFailure;
-
-            FilterDecisionLogEntry log = FilterDecisionLogBuilder.Create(
-                nameof(BrowserBootstrapFiltering),
-                trace,
-                FilterMatchKind.Unmatched,
-                isAllowed,
-                observedValue: target,
-                loggedForEvaluator: options.RecordRequiredPathsOnBootstrapFailure,
-                logLevelWhitelist: options.LogLevelBootstrapOutcome,
-                logLevelBlacklist: options.LogLevelBootstrapOutcome,
-                logLevelUnmatched: options.LogLevelBootstrapOutcome);
-
-            if (log.Level != LogLevel.None && _logger.IsEnabled(log.Level))
-            {
-                _logger.Log(log.Level, log.MessageTemplate, log.Args);
-            }
-
-            if (isAllowed)
-            {
-                // Note: the bootstrap HTML appends the one-shot attempt flag to the failure target,
-                // which breaks infinite loops by making the next in-scope request skip bootstrap HTML.
-                context.Response.Redirect(target, permanent: false);
-                return;
-            }
-
-            await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
-        }
-
-        /// <summary>
-        /// Handles a scope request that already carries the one-shot attempt flag but still has no cookie.
-        /// </summary>
-        /// <remarks>
-        /// Reviewer note: This is the loop breaker. It treats the request as a bootstrap failure outcome
-        /// and applies <see cref="BrowserBootstrapFilteringOptions.AllowRequiredPathsOnBootstrapFailure"/>.
-        /// </remarks>
-        private async Task HandleScopeBootstrapFailureAfterAttemptAsync(HttpContext context, BrowserBootstrapFilteringOptions options, string trace)
-        {
-            // Build the current target for logging (then strip the internal flag so downstream does not see it).
-            string targetWithFlag = BuildOriginalTargetOrThrow(context);
-
-            RemoveBootstrapAttemptFlagFromQuery(context);
-
-            string target = BuildOriginalTargetOrThrow(context);
-
-            if (options.RecordRequiredPathsOnBootstrapFailure)
-            {
-                await _filteringEventStorage.StoreAsync(new FilteringEvent
-                {
-                    TimestampUtc = DateTime.UtcNow,
-                    EventSource = nameof(BrowserBootstrapFiltering),
-                    MatchKind = FilterMatchKind.Unmatched,
-                    RemoteIpAddress = context.GetRemoteIpAddress(),
-                    ObservedValue = target
-                });
-            }
-
-            bool isAllowed = options.AllowRequiredPathsOnBootstrapFailure;
-
-            FilterDecisionLogEntry log = FilterDecisionLogBuilder.Create(
-                nameof(BrowserBootstrapFiltering),
-                trace,
-                FilterMatchKind.Unmatched,
-                isAllowed,
-                observedValue: target,
-                loggedForEvaluator: options.RecordRequiredPathsOnBootstrapFailure,
-                logLevelWhitelist: options.LogLevelBootstrapOutcome,
-                logLevelBlacklist: options.LogLevelBootstrapOutcome,
-                logLevelUnmatched: options.LogLevelBootstrapOutcome);
-
-            if (log.Level != LogLevel.None && _logger.IsEnabled(log.Level))
-            {
-                _logger.Log(log.Level, log.MessageTemplate, log.Args);
-            }
-
-            if (isAllowed)
-            {
-                await _next(context);
-                return;
-            }
-
-            await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
-        }
-
-        private static FilterMatchKind ClassifyPath(string observedPath, BrowserBootstrapFilteringOptions options)
-        {
-            if (string.IsNullOrEmpty(observedPath))
-            {
-                return FilterMatchKind.Unmatched;
-            }
-
-            FilterPriority priority = options.BootstrapConflictPreference == BootstrapConflictPreference.PreferScope
-                ? FilterPriority.Whitelist
-                : FilterPriority.Blacklist;
-
-            return FilterClassifier.Classify(
-                observedPath,
-                options.BootstrapScopePathPatterns,
-                options.BootstrapExceptionPathPatterns,
-                options.CaseSensitivePaths,
-                priority);
-        }
-
-        private void LogScopeClassificationIfEnabled(BrowserBootstrapFilteringOptions options, string traceIdentifier, string observedPath)
+        private void LogScopeIfEnabled(BrowserBootstrapFilteringOptions options, string traceIdentifier, string observedPath)
         {
             LogLevel level = options.LogLevelBootstrapScopePaths;
-            if (level == LogLevel.None || !_logger.IsEnabled(level))
+            if (!_logger.IsEnabled(level))
             {
                 return;
             }
@@ -435,172 +150,136 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
                 () => traceIdentifier);
         }
 
-        private void LogBootstrapAttempt(string traceIdentifier, string observedValue, BrowserBootstrapFilteringOptions options)
+        private bool TryValidateBootstrapCookie(HttpRequest request, BrowserBootstrapFilteringOptions options, out string reason)
         {
-            LogLevel level = options.LogLevelBootstrapAttempt;
-            if (level == LogLevel.None || !_logger.IsEnabled(level))
-            {
-                return;
-            }
+            reason = string.Empty;
 
-            _logger.Log(
-                level,
-                "{Middleware} action={Action} observed={Observed} trace={Trace}",
-                () => nameof(BrowserBootstrapFiltering),
-                () => "BootstrapAttempt",
-                () => observedValue,
-                () => traceIdentifier);
-        }
-
-        private static bool IsPath(PathString requestPath, string expected, bool caseSensitive)
-        {
-            if (!requestPath.HasValue)
+            if (!request.Cookies.TryGetValue(options.CookieName, out string? protectedToken))
             {
+                reason = "CookieMissing";
                 return false;
             }
 
-            var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-            return string.Equals(requestPath.Value!, expected, comparison);
-        }
-
-        private static bool HasValidBootstrapCookie(HttpContext context, BrowserBootstrapFilteringOptions options)
-        {
-            if (context.Request.Cookies.TryGetValue(options.CookieName, out string? value))
+            if (string.IsNullOrWhiteSpace(protectedToken))
             {
-                return string.Equals(value, BootstrapCookieValue, StringComparison.Ordinal);
-            }
-
-            return false;
-        }
-
-        private static bool HasBootstrapAttemptFlag(HttpContext context)
-        {
-            if (context.Request.Query.TryGetValue(BootstrapAttemptFlagKey, out StringValues values) && values.Count > 0)
-            {
-                string v = values[0] ?? string.Empty;
-                return string.Equals(v, BootstrapAttemptFlagValue, StringComparison.Ordinal);
-            }
-
-            return false;
-        }
-
-        private static void RemoveBootstrapAttemptFlagFromQuery(HttpContext context)
-        {
-            if (!context.Request.Query.TryGetValue(BootstrapAttemptFlagKey, out _))
-            {
-                return;
-            }
-
-            var sb = new StringBuilder(128);
-            bool first = true;
-
-            foreach (var kvp in context.Request.Query)
-            {
-                if (string.Equals(kvp.Key, BootstrapAttemptFlagKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                foreach (string v in kvp.Value)
-                {
-                    sb.Append(first ? '?' : '&');
-                    first = false;
-                    sb.Append(Uri.EscapeDataString(kvp.Key));
-                    sb.Append('=');
-                    sb.Append(Uri.EscapeDataString(v ?? string.Empty));
-                }
-            }
-
-            context.Request.QueryString = first ? QueryString.Empty : new QueryString(sb.ToString());
-        }
-
-        private static string BuildOriginalTargetOrThrow(HttpContext context)
-        {
-            string path = context.Request.Path.HasValue ? context.Request.Path.Value! : string.Empty;
-            string query = context.Request.QueryString.HasValue ? context.Request.QueryString.Value! : string.Empty;
-
-            if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/", StringComparison.Ordinal) || path.StartsWith("//", StringComparison.Ordinal))
-            {
-                // Reviewer note: should never happen for normal ASP.NET Core requests, but enforce invariants.
-                throw new InvalidOperationException("Request path is not a safe local path.");
-            }
-
-            if (query.Contains('\r', StringComparison.Ordinal) || query.Contains('\n', StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException("Request query is not header-safe.");
-            }
-
-            return path + query;
-        }
-
-        private static bool TryGetSafeOutcomeTarget(HttpContext context, out string target)
-        {
-            target = string.Empty;
-
-            if (!context.Request.Query.TryGetValue(OutcomeTargetQueryKey, out StringValues values) || values.Count == 0)
-            {
+                reason = "CookieEmpty";
                 return false;
             }
 
-            string candidate = values[0] ?? string.Empty;
-
-            if (!IsSafeLocalTarget(candidate))
+            string payload;
+            try
             {
+                payload = _protector.Unprotect(protectedToken);
+            }
+            catch
+            {
+                reason = "CookieUnprotectFailed";
                 return false;
             }
 
-            // Prevent obvious infinite loops if someone points back into the outcome endpoints.
-            if (candidate.StartsWith(BootstrapContinuePath, StringComparison.OrdinalIgnoreCase) ||
-                candidate.StartsWith(BootstrapFailurePath, StringComparison.OrdinalIgnoreCase))
+            // payload: v2|expUtcTicks|uaHashB64
+            string[] parts = payload.Split('|');
+            if (parts.Length != 3)
             {
+                reason = "CookieFormat";
                 return false;
             }
 
-            target = candidate;
-            return true;
-        }
-
-        private static bool IsSafeLocalTarget(string candidate)
-        {
-            if (string.IsNullOrWhiteSpace(candidate))
+            if (!string.Equals(parts[0], TokenVersion, StringComparison.Ordinal))
             {
+                reason = "CookieVersion";
                 return false;
             }
 
-            // Must be an absolute-path reference within the same host.
-            if (!candidate.StartsWith("/", StringComparison.Ordinal))
+            if (!long.TryParse(parts[1], out long expTicks))
             {
+                reason = "CookieExpiryParse";
                 return false;
             }
 
-            // Disallow scheme-relative.
-            if (candidate.StartsWith("//", StringComparison.Ordinal))
+            if (DateTimeOffset.UtcNow >= new DateTimeOffset(expTicks, TimeSpan.Zero))
             {
+                reason = "CookieExpired";
                 return false;
             }
 
-            // Basic header-safety.
-            if (candidate.Contains('\r', StringComparison.Ordinal) || candidate.Contains('\n', StringComparison.Ordinal))
+            string expectedUaHash = parts[2] ?? string.Empty;
+            string actualUaHash = ComputeUserAgentHashB64(request);
+
+            if (!string.Equals(expectedUaHash, actualUaHash, StringComparison.Ordinal))
             {
+                reason = "CookieUserAgentMismatch";
                 return false;
             }
 
             return true;
         }
 
-        private static Task WriteBootstrapAttemptHtmlAsync(HttpContext context, BrowserBootstrapFilteringOptions options, string originalTarget)
+        private string MintCookieToken(HttpRequest request, BrowserBootstrapFilteringOptions options)
         {
+            DateTimeOffset expUtc = DateTimeOffset.UtcNow.Add(options.CookieMaxAge);
+            string uaHash = ComputeUserAgentHashB64(request);
+
+            string payload = string.Concat(TokenVersion, "|", expUtc.Ticks.ToString(), "|", uaHash);
+            return _protector.Protect(payload);
+        }
+
+        private static string ComputeUserAgentHashB64(HttpRequest request)
+        {
+            string ua = request.Headers.UserAgent.ToString().Trim();
+            byte[] bytes = Encoding.UTF8.GetBytes(ua);
+            byte[] hash = SHA256.HashData(bytes);
+            return Convert.ToBase64String(hash);
+        }
+
+        private static Task WriteBootstrapHtmlAsync(HttpContext context, BrowserBootstrapFilteringOptions options, string protectedCookieToken)
+        {
+            ApplyBootstrapResponseHeaders(context.Response);
+
             context.Response.StatusCode = StatusCodes.Status200OK;
             context.Response.ContentType = "text/html; charset=utf-8";
 
-            context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
-            context.Response.Headers.Pragma = "no-cache";
+            string html = BrowserBootstrapHtml.Build(
+                cookieName: options.CookieName,
+                cookieValue: protectedCookieToken,
+                cookieMaxAge: options.CookieMaxAge,
+                traceIdentifier: context.TraceIdentifier);
 
-            string html = BuildBootstrapAttemptHtml(options, context.TraceIdentifier, originalTarget);
             return context.Response.WriteAsync(html);
         }
 
-        private static string BuildBootstrapAttemptHtml(BrowserBootstrapFilteringOptions options, string traceIdentifier, string originalTarget)
+        private static void ApplyBootstrapResponseHeaders(HttpResponse response)
+        {
+            response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+            response.Headers.Pragma = "no-cache";
+            response.Headers["X-Content-Type-Options"] = "nosniff";
+            response.Headers["Referrer-Policy"] = "no-referrer";
+
+            response.Headers["Content-Security-Policy"] =
+                "default-src 'none'; " +
+                "script-src 'unsafe-inline'; " +
+                "base-uri 'none'; " +
+                "form-action 'none'; " +
+                "frame-ancestors 'none'";
+        }
+
+        private void LogIfEnabled(LogLevel level, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_logger.IsEnabled(level))
+            {
+                return;
+            }
+
+            _logger.Log(level, messageTemplate, argumentFactories);
+        }
+    }
+
+    internal static class BrowserBootstrapHtml
+    {
+        // Browser-side single-attempt guard key (kept here so this type is self-contained).
+        private const string ClientAttemptKey = "evf.bootstrap.attempted";
+
+        public static string Build(string cookieName, string cookieValue, TimeSpan cookieMaxAge, string traceIdentifier)
         {
             static string JsEscape(string s) => (s ?? string.Empty)
                 .Replace("\\", "\\\\", StringComparison.Ordinal)
@@ -608,21 +287,14 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
                 .Replace("\r", "\\r", StringComparison.Ordinal)
                 .Replace("\n", "\\n", StringComparison.Ordinal);
 
-            string cookieName = JsEscape(options.CookieName);
-            string cookieValue = JsEscape(BootstrapCookieValue);
+            int maxAgeSeconds = (int)Math.Clamp(cookieMaxAge.TotalSeconds, 60, int.MaxValue);
 
-            string continuePath = JsEscape(BootstrapContinuePath);
-            string failPath = JsEscape(BootstrapFailurePath);
-
-            string target = JsEscape(originalTarget);
-
-            string attemptKey = JsEscape(BootstrapAttemptFlagKey);
-            string attemptValue = JsEscape(BootstrapAttemptFlagValue);
-
-            int maxAgeSeconds = (int)Math.Clamp(options.CookieMaxAge.TotalSeconds, 60, int.MaxValue);
+            string name = JsEscape(cookieName);
+            string value = JsEscape(cookieValue);
             string trace = JsEscape(traceIdentifier);
+            string attemptKey = JsEscape(ClientAttemptKey);
 
-            var sb = new StringBuilder(1500);
+            var sb = new StringBuilder(2200);
 
             sb.AppendLine("<!doctype html>");
             sb.AppendLine("<html lang=\"en\">");
@@ -631,30 +303,54 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
             sb.AppendLine("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
             sb.AppendLine("  <meta name=\"robots\" content=\"noindex, nofollow\" />");
             sb.AppendLine("  <title>Loading…</title>");
+            sb.AppendLine("  <style>");
+            sb.AppendLine("    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:2rem;}");
+            sb.AppendLine("    .muted{opacity:.75}");
+            sb.AppendLine("    #fail{display:none;margin-top:1rem;}");
+            sb.AppendLine("    code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}");
+            sb.AppendLine("  </style>");
             sb.AppendLine("</head>");
             sb.AppendLine("<body>");
+            sb.AppendLine("  <h1 id=\"status\">Loading…</h1>");
+            sb.AppendLine("  <p class=\"muted\">This page verifies that your browser supports JavaScript and cookies.</p>");
             sb.AppendLine("  <noscript>");
-            sb.AppendLine("    <p>JavaScript is required to continue. If the problem persists, please contact customer support and provide this Trace Id:</p>");
-            sb.Append("    <pre>").Append(trace).AppendLine("</pre>");
+            sb.AppendLine("    <p><strong>JavaScript is required.</strong></p>");
+            sb.AppendLine("    <p class=\"muted\">Trace Id: <code>" + trace + "</code></p>");
             sb.AppendLine("  </noscript>");
+            sb.AppendLine("  <div id=\"fail\">");
+            sb.AppendLine("    <p><strong>Unable to continue.</strong></p>");
+            sb.AppendLine("    <p class=\"muted\">Please enable cookies for this site and reload. Trace Id: <code>" + trace + "</code></p>");
+            sb.AppendLine("  </div>");
             sb.AppendLine("  <script>");
             sb.AppendLine("  (function(){");
-            sb.AppendLine("    function hasCookie(name, value){");
-            sb.AppendLine("      var needle = name + '=' + value;");
-            sb.AppendLine("      return document.cookie && document.cookie.indexOf(needle) >= 0;");
+            sb.AppendLine("    function hasCookieExact(n, v){");
+            sb.AppendLine("      var all = document.cookie ? document.cookie.split('; ') : [];");
+            sb.AppendLine("      for (var i=0;i<all.length;i++){");
+            sb.AppendLine("        var p = all[i];");
+            sb.AppendLine("        if (p.indexOf(n + '=') === 0) return p.substring(n.length + 1) === v;");
+            sb.AppendLine("      }");
+            sb.AppendLine("      return false;");
             sb.AppendLine("    }");
-            sb.AppendLine("    var target = '" + target + "';");
-            sb.AppendLine("    var toOk = encodeURIComponent(target);");
-            sb.AppendLine("    var targetFail = target + (target.indexOf('?') >= 0 ? '&' : '?') + '" + attemptKey + "=" + attemptValue + "';");
-            sb.AppendLine("    var toFail = encodeURIComponent(targetFail);");
+            sb.AppendLine("    function fail(){");
+            sb.AppendLine("      try { document.getElementById('status').textContent = 'Loading failed'; } catch(e){}");
+            sb.AppendLine("      try { document.getElementById('fail').style.display = 'block'; } catch(e){}");
+            sb.AppendLine("    }");
+            sb.AppendLine("    var name = '" + name + "';");
+            sb.AppendLine("    var value = '" + value + "';");
+            sb.AppendLine("    if (hasCookieExact(name, value)) return;");
+            sb.AppendLine("    var attempted = false;");
+            sb.AppendLine("    try { attempted = (sessionStorage.getItem('" + attemptKey + "') === '1'); } catch(e){}");
+            sb.AppendLine("    if (attempted) { fail(); return; }");
+            sb.AppendLine("    try { sessionStorage.setItem('" + attemptKey + "', '1'); } catch(e){}");
             sb.AppendLine("    try {");
             sb.AppendLine("      var secure = (location.protocol === 'https:') ? '; Secure' : '';");
-            sb.AppendLine("      document.cookie = '" + cookieName + "=" + cookieValue + "; Path=/; Max-Age=" + maxAgeSeconds + "; SameSite=Lax' + secure;");
+            sb.AppendLine("      document.cookie = name + '=' + value + '; Path=/; Max-Age=" + maxAgeSeconds + "; SameSite=Lax' + secure;");
             sb.AppendLine("    } catch (e) { }");
-            sb.AppendLine("    if (hasCookie('" + cookieName + "','" + cookieValue + "')) {");
-            sb.AppendLine("      location.replace('" + continuePath + "?" + OutcomeTargetQueryKey + "=' + toOk);");
+            sb.AppendLine("    if (hasCookieExact(name, value)) {");
+            sb.AppendLine("      try { sessionStorage.removeItem('" + attemptKey + "'); } catch(e){}");
+            sb.AppendLine("      location.replace(location.href);");
             sb.AppendLine("    } else {");
-            sb.AppendLine("      location.replace('" + failPath + "?" + OutcomeTargetQueryKey + "=' + toFail);");
+            sb.AppendLine("      fail();");
             sb.AppendLine("    }");
             sb.AppendLine("  })();");
             sb.AppendLine("  </script>");

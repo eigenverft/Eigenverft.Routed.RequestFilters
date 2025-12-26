@@ -73,23 +73,31 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
             BrowserBootstrapFilteringOptions options = _optionsMonitor.CurrentValue;
 
             string path = req.Path.HasValue ? req.Path.Value! : string.Empty;
-            if (!IsInScope(path, options))
+            string trace = context.TraceIdentifier;
+
+            bool inScope = IsInScope(path, options);
+
+            LogIfEnabled(
+                options.LogLevelScope,
+                "{Middleware} scope={Scope} observed={Observed} trace={Trace}",
+                () => nameof(BrowserBootstrapFiltering),
+                () => inScope ? "InScope" : "OutOfScope",
+                () => path,
+                () => trace);
+
+            if (!inScope)
             {
                 await _next(context);
                 return;
             }
 
-            string trace = context.TraceIdentifier;
-
-            LogScopeIfEnabled(options, trace, path);
-
-            if (TryValidateBootstrapCookie(req, options, out _))
+            if (TryValidateBootstrapCookie(req, options, out string reason))
             {
                 LogIfEnabled(
                     options.LogLevelBootstrapPassed,
-                    "{Middleware} action={Action} observed={Observed} trace={Trace}",
+                    "{Middleware} result={Result} observed={Observed} trace={Trace}",
                     () => nameof(BrowserBootstrapFiltering),
-                    () => "BootstrapPassed",
+                    () => "CookieValid_PassThrough",
                     () => path,
                     () => trace);
 
@@ -99,10 +107,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 
             LogIfEnabled(
                 options.LogLevelBootstrapServed,
-                "{Middleware} action={Action} observed={Observed} trace={Trace}",
+                "{Middleware} result={Result} observed={Observed} reason={Reason} trace={Trace}",
                 () => nameof(BrowserBootstrapFiltering),
-                () => "BootstrapServed",
+                () => "CookieMissingOrInvalid_ServingBootstrapPage",
                 () => path,
+                () => reason,
                 () => trace);
 
             if (HttpMethods.IsHead(req.Method))
@@ -129,25 +138,8 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
                 return false;
             }
 
-            // Reviewer note: This slimmed version always matches case-insensitively.
+            // Always match case-insensitively in the slimmed design.
             return path.MatchesAnyPattern(patterns, ignoreCase: true);
-        }
-
-        private void LogScopeIfEnabled(BrowserBootstrapFilteringOptions options, string traceIdentifier, string observedPath)
-        {
-            LogLevel level = options.LogLevelBootstrapScopePaths;
-            if (!_logger.IsEnabled(level))
-            {
-                return;
-            }
-
-            _logger.Log(
-                level,
-                "{Middleware} action={Action} observed={Observed} trace={Trace}",
-                () => nameof(BrowserBootstrapFiltering),
-                () => "BootstrapScope",
-                () => observedPath,
-                () => traceIdentifier);
         }
 
         private bool TryValidateBootstrapCookie(HttpRequest request, BrowserBootstrapFilteringOptions options, out string reason)

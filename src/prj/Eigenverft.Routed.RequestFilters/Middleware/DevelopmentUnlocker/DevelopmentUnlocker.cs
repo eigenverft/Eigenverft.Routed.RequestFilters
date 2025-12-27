@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 
+using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpResponseExtensions;
 using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
 using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
@@ -79,7 +80,8 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.DevelopmentUnlocker
 
             await _filteringEventStorage.RemoveByRemoteIpAddressAsync(remoteIpAddress);
 
-            await _next(context);
+            await context.Response.WriteDefaultStatusCodeAnswerEx(StatusCodes.Status200OK); ;
+            return;
         }
 
         private static bool IsUnlockRequest(HttpContext context, DevelopmentUnlockerOptions options)

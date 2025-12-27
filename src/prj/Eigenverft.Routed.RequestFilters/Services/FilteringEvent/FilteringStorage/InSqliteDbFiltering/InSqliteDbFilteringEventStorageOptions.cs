@@ -25,7 +25,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         /// <summary>
         /// Gets or sets the SQLite database file name.
         /// </summary>
-        public string DatabaseFileName { get; set; } = "filtering-events.sqlite";
+        public string DatabaseFileName { get; set; } = "FilteringEventStorage.sqlite";
 
         /// <summary>
         /// Gets or sets a value indicating whether Write-Ahead Logging should be enabled.

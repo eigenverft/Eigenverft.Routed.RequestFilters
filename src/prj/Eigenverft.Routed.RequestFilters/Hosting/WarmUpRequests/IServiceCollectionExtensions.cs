@@ -1,8 +1,13 @@
-﻿// IServiceCollectionExtensions.cs
+﻿// File: Hosting/WarmUpRequests/IServiceCollectionExtensions.cs
+
 using System;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Net.Security;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
 
@@ -36,7 +41,9 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
 
             AddInfrastructure(services);
 
-            services.AddOptions<WarmUpRequestsOptions>().BindConfiguration(nameof(WarmUpRequestsOptions));
+            services
+                .AddOptions<WarmUpRequestsOptions>()
+                .BindConfiguration(nameof(WarmUpRequestsOptions));
 
             AddWarmUpHttpClient(services);
 
@@ -57,7 +64,7 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
         /// builder.Services.AddWarmUpRequests(o =&gt;
         /// {
         ///     o.InitialDelay = TimeSpan.FromSeconds(10);
-        ///     o.TargetUrls = new[] { "https://eigenverft.com/favicon.ico", "https://www.google.com/" };
+        ///     o.TargetUrls = new[] { "https://eigenverft.com/health" };
         /// });
         /// </code>
         /// </example>
@@ -80,11 +87,6 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
         /// <param name="manualConfigure">Optional delegate to modify or augment the bound configuration.</param>
         /// <returns>The updated service collection.</returns>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="services"/> or <paramref name="configuration"/> is null.</exception>
-        /// <example>
-        /// <code>
-        /// builder.Services.AddWarmUpRequests(builder.Configuration, o =&gt; o.Enabled = true);
-        /// </code>
-        /// </example>
         public static IServiceCollection AddWarmUpRequests(this IServiceCollection services, IConfiguration configuration, Action<WarmUpRequestsOptions>? manualConfigure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -92,7 +94,9 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
 
             AddInfrastructure(services);
 
-            services.AddOptions<WarmUpRequestsOptions>().Bind(configuration.GetSection(nameof(WarmUpRequestsOptions)));
+            services
+                .AddOptions<WarmUpRequestsOptions>()
+                .Bind(configuration.GetSection(nameof(WarmUpRequestsOptions)));
 
             if (manualConfigure != null)
             {
@@ -113,26 +117,41 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
                 {
                     WarmUpRequestsOptions o = sp.GetRequiredService<IOptionsMonitor<WarmUpRequestsOptions>>().CurrentValue;
 
-                    // Reviewer note: avoid double-timeout confusion by keeping HttpClient.Timeout above per-request timeout.
+                    // Reviewer note: keep HttpClient.Timeout slightly above per-request timeout to avoid confusing dual timeouts.
                     TimeSpan perRequest = o.RequestTimeout > TimeSpan.Zero ? o.RequestTimeout : TimeSpan.FromSeconds(5);
-
-                    // Reviewer note: we still use a CancellationToken timeout in the hosted service, this is an extra guard.
                     client.Timeout = perRequest + TimeSpan.FromSeconds(2);
                 })
                 .ConfigurePrimaryHttpMessageHandler(sp =>
                 {
                     WarmUpRequestsOptions o = sp.GetRequiredService<IOptionsMonitor<WarmUpRequestsOptions>>().CurrentValue;
 
+                    TimeSpan requestTimeout = o.RequestTimeout > TimeSpan.Zero ? o.RequestTimeout : TimeSpan.FromSeconds(5);
+                    TimeSpan connectTimeout = o.ConnectTimeout > TimeSpan.Zero ? o.ConnectTimeout : TimeSpan.FromSeconds(2);
+
+                    // Reviewer note: if connectTimeout is too close to requestTimeout, fallback to other IPs cannot happen.
+                    // Force a short per-attempt connect timeout to allow IPv4 fallback when IPv6 is broken.
+                    TimeSpan perAttemptConnectTimeout = connectTimeout;
+                    if (perAttemptConnectTimeout <= TimeSpan.Zero)
+                    {
+                        perAttemptConnectTimeout = TimeSpan.FromMilliseconds(500);
+                    }
+
+                    if (perAttemptConnectTimeout >= requestTimeout)
+                    {
+                        perAttemptConnectTimeout = TimeSpan.FromMilliseconds(
+                            Math.Max(250, requestTimeout.TotalMilliseconds / 3));
+                    }
+
                     var handler = new SocketsHttpHandler
                     {
-                        // Reviewer note: system proxy can cause "silent" hangs if misconfigured.
+                        // Reviewer note: system proxy on servers can introduce "silent" hangs. Default DisableSystemProxy=True.
                         UseProxy = !o.DisableSystemProxy,
                         Proxy = null,
 
-                        // Reviewer note: hard cap connect time so SendAsync cannot sit in connect forever.
-                        ConnectTimeout = o.ConnectTimeout > TimeSpan.Zero ? o.ConnectTimeout : TimeSpan.FromSeconds(2),
+                        // Safety net; ConnectCallback below enforces per-attempt timeout.
+                        ConnectTimeout = perAttemptConnectTimeout,
 
-                        // Reviewer note: do not chase redirects; loops should be visible.
+                        // Reviewer note: do not chase redirects; redirect loops should be visible.
                         AllowAutoRedirect = false,
 
                         AutomaticDecompression = DecompressionMethods.GZip |
@@ -142,9 +161,83 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
 
                     if (o.DangerousAcceptAnyServerCertificate)
                     {
-                        // Reviewer note: for dev/test only; do not enable on public internet endpoints.
-                        handler.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
+                        // Reviewer note: use only for dev/test. Never enable in production.
+                        handler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
                     }
+
+                    // Reviewer note: Bullet-proof connect:
+                    // resolve all IPs, try IPv4 first, use short per-attempt timeouts so IPv6 blackholes do not stall the request.
+                    handler.ConnectCallback = async (context, cancellationToken) =>
+                    {
+                        string host = context.DnsEndPoint.Host;
+                        int port = context.DnsEndPoint.Port;
+
+                        IPAddress[] addresses;
+                        try
+                        {
+                            addresses = await Dns.GetHostAddressesAsync(host).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new HttpRequestException($"DNS resolution failed for host '{host}'.", ex);
+                        }
+
+                        if (addresses == null || addresses.Length == 0)
+                        {
+                            throw new HttpRequestException($"DNS resolution returned no addresses for host '{host}'.");
+                        }
+
+                        // Prefer IPv4 first for reliability when IPv6 routes are broken.
+                        IPAddress[] ordered = addresses
+                            .OrderBy(a => a.AddressFamily == AddressFamily.InterNetwork ? 0 : 1)
+                            .ToArray();
+
+                        Exception? lastError = null;
+
+                        foreach (IPAddress address in ordered)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+
+                            Socket socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+                            {
+                                NoDelay = true
+                            };
+
+                            try
+                            {
+                                var endPoint = new IPEndPoint(address, port);
+
+                                Task connectTask = socket.ConnectAsync(endPoint);
+
+                                Task completed = await Task.WhenAny(
+                                        connectTask,
+                                        Task.Delay(perAttemptConnectTimeout, cancellationToken))
+                                    .ConfigureAwait(false);
+
+                                if (completed != connectTask)
+                                {
+                                    // timed out on this address, try next
+                                    socket.Dispose();
+                                    continue;
+                                }
+
+                                // propagate connect exception if present
+                                await connectTask.ConfigureAwait(false);
+
+                                return new NetworkStream(socket, ownsSocket: true);
+                            }
+                            catch (Exception ex)
+                            {
+                                lastError = ex;
+                                socket.Dispose();
+                                continue;
+                            }
+                        }
+
+                        throw new HttpRequestException(
+                            $"Failed to connect to '{host}:{port}' via any resolved address.",
+                            lastError);
+                    };
 
                     return handler;
                 });

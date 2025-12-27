@@ -1,4 +1,5 @@
-﻿// WarmUpRequestsOptions.cs
+﻿// File: Hosting/WarmUpRequests/WarmUpRequestsOptions.cs
+
 using System;
 
 using Microsoft.Extensions.Logging;
@@ -44,18 +45,18 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
         public bool DisableSystemProxy { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets a value indicating whether server certificate validation is bypassed.
+        /// Gets or sets a value indicating whether server certificates should be accepted without validation.
         /// </summary>
         /// <remarks>
-        /// Use only for dev/test scenarios. Do not enable for public internet targets.
+        /// Reviewer note: use only for dev/test. Never enable in production.
         /// </remarks>
-        public bool DangerousAcceptAnyServerCertificate { get; set; } = true;
+        public bool DangerousAcceptAnyServerCertificate { get; set; } = false;
 
         /// <summary>
         /// Gets or sets a host header override (optional).
         /// </summary>
         /// <remarks>
-        /// Useful when warming via <c>https://localhost/</c> while exercising canonical host logic for a public domain.
+        /// Useful when warming via loopback or IP endpoints while exercising canonical host logic for a public domain.
         /// </remarks>
         public string? HostHeaderOverride { get; set; } = null;
 
@@ -78,6 +79,5 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
         /// Gets or sets the log level used for warm-up messages.
         /// </summary>
         public LogLevel LogLevel { get; set; } = LogLevel.Debug;
-
     }
 }

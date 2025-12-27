@@ -1,4 +1,7 @@
-﻿using System;
+﻿// WarmUpRequestsHostedService.cs
+using System;
+using System.Diagnostics;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,13 +18,13 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
     /// Hosted service that issues warm-up HTTP requests after a configurable delay.
     /// </summary>
     /// <remarks>
-    /// Typical use cases:
-    /// - prime JIT and DI paths in a cold process
-    /// - establish TLS/session caches
-    /// - pre-create upstream connection pools for reverse proxy scenarios
+    /// Intended to prime first-use overhead (JIT, DI graphs, TLS/session caches, proxy pools).
+    /// Must not crash the process and should be fully observable via logs.
     /// </remarks>
     public sealed class WarmUpRequestsHostedService : BackgroundService
     {
+        private static readonly Version DefaultHttpVersion = HttpVersion.Version20;
+
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IDeferredLogger<WarmUpRequestsHostedService> _logger;
         private readonly IOptionsMonitor<WarmUpRequestsOptions> _optionsMonitor;
@@ -58,17 +61,31 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
             {
                 if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
                 {
-                    _logger.Log(options.LogLevel, "Warm-up skipped. No TargetUrls configured.", () => Array.Empty<object>());
+                    _logger.Log(options.LogLevel, "Warm-up skipped. No TargetUrls configured.");
                 }
 
                 return;
+            }
+
+            TimeSpan requestTimeout = options.RequestTimeout > TimeSpan.Zero ? options.RequestTimeout : TimeSpan.FromSeconds(5);
+
+            if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
+            {
+                _logger.Log(
+                    options.LogLevel,
+                    "Warm-up configured. enabled=True initialDelay={InitialDelay} requestTimeout={RequestTimeout} connectTimeout={ConnectTimeout} disableProxy={DisableProxy} hostOverride={HostOverride}.",
+                    () => options.InitialDelay,
+                    () => requestTimeout,
+                    () => options.ConnectTimeout,
+                    () => options.DisableSystemProxy,
+                    () => options.HostHeaderOverride ?? string.Empty);
             }
 
             if (options.InitialDelay > TimeSpan.Zero)
             {
                 try
                 {
-                    await Task.Delay(options.InitialDelay, stoppingToken);
+                    await Task.Delay(options.InitialDelay, stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -85,21 +102,32 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
                 string url = (rawUrl ?? string.Empty).Trim();
                 if (url.Length == 0) continue;
 
+                if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+                {
+                    if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
+                    {
+                        _logger.Log(options.LogLevel, "Warm-up skipped invalid url={Url}.", () => url);
+                    }
+
+                    continue;
+                }
+
+                var sw = Stopwatch.StartNew();
+
                 try
                 {
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                    if (options.RequestTimeout > TimeSpan.Zero)
+                    cts.CancelAfter(requestTimeout);
+
+                    using var request = new HttpRequestMessage(HttpMethod.Get, uri)
                     {
-                        cts.CancelAfter(options.RequestTimeout);
-                    }
-
-                    // inside the foreach, before SendAsync:
-
-                    using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                        // Reviewer note: deterministic behavior; avoid unexpected protocol attempts.
+                        Version = DefaultHttpVersion,
+                        VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+                    };
 
                     if (!string.IsNullOrWhiteSpace(options.HostHeaderOverride))
                     {
-                        // Reviewer note: this affects Host header and ASP.NET Core Request.Host.
                         request.Headers.Host = options.HostHeaderOverride;
                     }
 
@@ -115,27 +143,61 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
 
                     if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
                     {
-                        _logger.Log(options.LogLevel, "Warm-up sending. url={Url} hostOverride={Host}.", () => url, () => options.HostHeaderOverride ?? "");
+                        _logger.Log(options.LogLevel, "Warm-up sending. url={Url}.", () => url);
                     }
 
-                    using HttpResponseMessage response = await client.SendAsync(
+                    // Reviewer note: fail-safe against rare cases where cancellation is not observed promptly.
+                    Task<HttpResponseMessage> sendTask = client.SendAsync(
                         request,
                         HttpCompletionOption.ResponseHeadersRead,
                         cts.Token);
 
+                    Task timeoutTask = Task.Delay(requestTimeout + TimeSpan.FromMilliseconds(250), stoppingToken);
+
+                    Task completed = await Task.WhenAny(sendTask, timeoutTask).ConfigureAwait(false);
+
+                    if (completed == timeoutTask && !stoppingToken.IsCancellationRequested)
+                    {
+                        cts.Cancel();
+
+                        _ = sendTask.ContinueWith(
+                            t => _ = t.Exception,
+                            TaskContinuationOptions.OnlyOnFaulted);
+
+                        if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
+                        {
+                            _logger.Log(
+                                options.LogLevel,
+                                "Warm-up timed out. url={Url} elapsedMs={ElapsedMs}.",
+                                () => url,
+                                () => sw.Elapsed.TotalMilliseconds);
+                        }
+
+                        continue;
+                    }
+
+                    using HttpResponseMessage response = await sendTask.ConfigureAwait(false);
+
+                    if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
+                    {
+                        _logger.Log(
+                            options.LogLevel,
+                            "Warm-up completed. url={Url} status={StatusCode} elapsedMs={ElapsedMs}.",
+                            () => url,
+                            () => (int)response.StatusCode,
+                            () => sw.Elapsed.TotalMilliseconds);
+                    }
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {
-                    // Per-request timeout.
                     if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
                     {
-                        _logger.Log(options.LogLevel, "Warm-up request timed out. url={Url}.", () => url);
+                        _logger.Log(options.LogLevel, "Warm-up timed out. url={Url} elapsedMs={ElapsedMs}.", () => url, () => sw.Elapsed.TotalMilliseconds);
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Reviewer note: failure should not crash the process; it should only be observable.
-                    _logger.LogWarning(ex, "Warm-up request failed. url={Url}.", () => url);
+                    _logger.LogWarning(ex, "Warm-up failed. url={Url} elapsedMs={ElapsedMs}.", () => url, () => sw.Elapsed.TotalMilliseconds);
                 }
             }
         }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿// WarmUpRequestsOptions.cs
+using System;
 
 using Microsoft.Extensions.Logging;
 
@@ -43,6 +44,14 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
         public bool DisableSystemProxy { get; set; } = true;
 
         /// <summary>
+        /// Gets or sets a value indicating whether server certificate validation is bypassed.
+        /// </summary>
+        /// <remarks>
+        /// Use only for dev/test scenarios. Do not enable for public internet targets.
+        /// </remarks>
+        public bool DangerousAcceptAnyServerCertificate { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets a host header override (optional).
         /// </summary>
         /// <remarks>
@@ -66,8 +75,9 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
         public string AcceptLanguage { get; set; } = "en-US,en;q=0.9";
 
         /// <summary>
-        /// Gets or sets the log level used for warm-up completion messages.
+        /// Gets or sets the log level used for warm-up messages.
         /// </summary>
         public LogLevel LogLevel { get; set; } = LogLevel.Debug;
+
     }
 }

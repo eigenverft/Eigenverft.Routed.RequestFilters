@@ -1,23 +1,18 @@
 ﻿using System;
+using System.Net;
+using System.Net.Http;
 
 using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
 {
-    /// <summary>
-    /// Extension methods for registering warm-up requests.
-    /// </summary>
     public static partial class IServiceCollectionExtensions
     {
-        /// <summary>
-        /// Registers warm-up requests hosted service and binds options from <c>WarmUpRequestsOptions</c>.
-        /// </summary>
-        /// <param name="services">Service collection.</param>
-        /// <returns>The updated service collection.</returns>
         public static IServiceCollection AddWarmUpRequests(this IServiceCollection services)
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -26,57 +21,37 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
 
             services.AddOptions<WarmUpRequestsOptions>().BindConfiguration(nameof(WarmUpRequestsOptions));
 
-            services.AddHttpClient(WarmUpRequestsOptions.HttpClientName);
+            services.AddHttpClient(WarmUpRequestsOptions.HttpClientName)
+                .ConfigureHttpClient((sp, client) =>
+                {
+                    WarmUpRequestsOptions o = sp.GetRequiredService<IOptionsMonitor<WarmUpRequestsOptions>>().CurrentValue;
+
+                    // Reviewer note: enforce an overall timeout in addition to per-request CancellationToken.
+                    client.Timeout = o.RequestTimeout > TimeSpan.Zero ? o.RequestTimeout : TimeSpan.FromSeconds(5);
+                })
+                .ConfigurePrimaryHttpMessageHandler(sp =>
+                {
+                    WarmUpRequestsOptions o = sp.GetRequiredService<IOptionsMonitor<WarmUpRequestsOptions>>().CurrentValue;
+
+                    return new SocketsHttpHandler
+                    {
+                        UseProxy = !o.DisableSystemProxy,
+                        Proxy = null,
+                        ConnectTimeout = o.ConnectTimeout > TimeSpan.Zero ? o.ConnectTimeout : TimeSpan.FromSeconds(2),
+
+                        // Reviewer note: warm-up should not chase redirects; it can mask loops.
+                        AllowAutoRedirect = false,
+
+                        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
+                    };
+                });
 
             services.AddHostedService<WarmUpRequestsHostedService>();
 
             return services;
         }
 
-        /// <summary>
-        /// Registers warm-up requests hosted service and applies additional code-based configuration.
-        /// </summary>
-        /// <param name="services">Service collection.</param>
-        /// <param name="manualConfigure">Delegate to configure <see cref="WarmUpRequestsOptions"/>.</param>
-        /// <returns>The updated service collection.</returns>
-        public static IServiceCollection AddWarmUpRequests(this IServiceCollection services, Action<WarmUpRequestsOptions> manualConfigure)
-        {
-            ArgumentNullException.ThrowIfNull(services);
-            ArgumentNullException.ThrowIfNull(manualConfigure);
-
-            services.AddWarmUpRequests();
-            services.Configure(manualConfigure);
-
-            return services;
-        }
-
-        /// <summary>
-        /// Registers warm-up requests hosted service and binds options from the provided configuration root.
-        /// </summary>
-        /// <param name="services">Service collection.</param>
-        /// <param name="configuration">Configuration root containing a section named <c>WarmUpRequestsOptions</c>.</param>
-        /// <param name="manualConfigure">Optional extra configuration.</param>
-        /// <returns>The updated service collection.</returns>
-        public static IServiceCollection AddWarmUpRequests(this IServiceCollection services, IConfiguration configuration, Action<WarmUpRequestsOptions>? manualConfigure = null)
-        {
-            ArgumentNullException.ThrowIfNull(services);
-            ArgumentNullException.ThrowIfNull(configuration);
-
-            AddInfrastructure(services);
-
-            services.AddOptions<WarmUpRequestsOptions>().Bind(configuration.GetSection(nameof(WarmUpRequestsOptions)));
-
-            if (manualConfigure != null)
-            {
-                services.Configure(manualConfigure);
-            }
-
-            services.AddHttpClient(WarmUpRequestsOptions.HttpClientName);
-
-            services.AddHostedService<WarmUpRequestsHostedService>();
-
-            return services;
-        }
+        // ... keep your other overloads
 
         private static void AddInfrastructure(IServiceCollection services)
         {

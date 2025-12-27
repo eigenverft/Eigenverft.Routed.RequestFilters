@@ -7,9 +7,6 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
     /// <summary>
     /// Options for <see cref="WarmUpRequestsHostedService"/>.
     /// </summary>
-    /// <remarks>
-    /// Bind from configuration section named <c>WarmUpRequestsOptions</c>. Defaults are safe for production.
-    /// </remarks>
     public sealed class WarmUpRequestsOptions
     {
         /// <summary>
@@ -30,15 +27,32 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
         /// <summary>
         /// Gets or sets the timeout applied per warm-up request.
         /// </summary>
-        public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(2);
+        public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(3);
+
+        /// <summary>
+        /// Gets or sets the connect timeout for establishing TCP/TLS connections.
+        /// </summary>
+        public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(2);
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the OS/system proxy should be ignored.
+        /// </summary>
+        /// <remarks>
+        /// In server scenarios this should typically be <c>true</c> to avoid unexpected proxy hangs.
+        /// </remarks>
+        public bool DisableSystemProxy { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a host header override (optional).
+        /// </summary>
+        /// <remarks>
+        /// Useful when warming via <c>https://localhost/</c> while exercising canonical host logic for a public domain.
+        /// </remarks>
+        public string? HostHeaderOverride { get; set; } = null;
 
         /// <summary>
         /// Gets or sets target URLs to request once on startup.
         /// </summary>
-        /// <remarks>
-        /// Example: <c>https://eigenverft.com/</c>.
-        /// Add additional representative paths if you want to prime more code paths.
-        /// </remarks>
         public string[] TargetUrls { get; set; } = Array.Empty<string>();
 
         /// <summary>

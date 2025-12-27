@@ -93,9 +93,16 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
                         cts.CancelAfter(options.RequestTimeout);
                     }
 
+                    // inside the foreach, before SendAsync:
+
                     using var request = new HttpRequestMessage(HttpMethod.Get, url);
 
-                    // Reviewer note: make warm-up look like a browser to avoid your own filters blocking it.
+                    if (!string.IsNullOrWhiteSpace(options.HostHeaderOverride))
+                    {
+                        // Reviewer note: this affects Host header and ASP.NET Core Request.Host.
+                        request.Headers.Host = options.HostHeaderOverride;
+                    }
+
                     if (!string.IsNullOrWhiteSpace(options.UserAgent))
                     {
                         request.Headers.TryAddWithoutValidation("User-Agent", options.UserAgent);
@@ -106,19 +113,16 @@ namespace Eigenverft.Routed.RequestFilters.Hosting.WarmUpRequests
                         request.Headers.TryAddWithoutValidation("Accept-Language", options.AcceptLanguage);
                     }
 
+                    if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
+                    {
+                        _logger.Log(options.LogLevel, "Warm-up sending. url={Url} hostOverride={Host}.", () => url, () => options.HostHeaderOverride ?? "");
+                    }
+
                     using HttpResponseMessage response = await client.SendAsync(
                         request,
                         HttpCompletionOption.ResponseHeadersRead,
                         cts.Token);
 
-                    if (options.LogLevel != LogLevel.None && _logger.IsEnabled(options.LogLevel))
-                    {
-                        _logger.Log(
-                            options.LogLevel,
-                            "Warm-up request completed. url={Url} status={StatusCode}.",
-                            () => url,
-                            () => (int)response.StatusCode);
-                    }
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {

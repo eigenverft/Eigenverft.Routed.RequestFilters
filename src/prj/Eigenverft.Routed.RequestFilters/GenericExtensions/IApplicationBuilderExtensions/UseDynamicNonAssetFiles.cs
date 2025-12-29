@@ -12,22 +12,49 @@ using Microsoft.Extensions.FileProviders;
 namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions
 {
     /// <summary>
-    /// Middleware helpers for serving a mounted static-only folder before endpoint fallbacks
-    /// (for example before Razor Components / Blazor fallbacks).
+    /// Provides middleware helpers to serve an isolated “static-only” subtree from <c>wwwroot</c>
+    /// before endpoint fallbacks (for example <c>MapStaticAssets()</c> and <c>MapRazorComponents(...)</c>).
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The intent is to host a client-side app (PWA / SPA) under a mount path (for example <c>/app</c>)
+    /// while preventing later endpoints (Razor Components, Identity endpoints, fallback endpoints) from handling that subtree.
+    /// </para>
+    /// <para>
+    /// This is achieved by branching with <see cref="IApplicationBuilder.UseWhen(Func{HttpContext, bool}, Action{IApplicationBuilder})"/>
+    /// and making the branch terminal: if no file is served, the branch returns <c>404</c>.
+    /// </para>
+    /// <para>
+    /// A critical detail: if endpoint routing has already selected an endpoint for the request, static file middleware can no-op.
+    /// Therefore, inside the static-only branch we clear a selected endpoint (when it has a delegate) so the static pipeline
+    /// can serve files reliably and the request cannot “fall through” into later endpoint handlers.
+    /// </para>
+    /// </remarks>
     public static class NonAssetFilesExtensions
     {
         /// <summary>
         /// Serves a static-only folder mounted at <c>/dynamic</c> from <c>wwwroot/dynamic</c>.
         /// </summary>
         /// <remarks>
-        /// This branch is terminal: if a file is not served, it returns <c>404</c> and stops.
-        /// Deep links are rewritten to the mount directory so DefaultFiles can serve <c>index.html</c>.
+        /// <para>
+        /// This is a convenience wrapper over <see cref="UseNonAssetFiles(IApplicationBuilder, string?, Action{FileExtensionContentTypeProvider}?, bool)"/>.
+        /// </para>
+        /// <para>
+        /// The branch is terminal: if a file is not served, the response is <c>404</c> and no later middleware/endpoints run.
+        /// Deep links can be rewritten to the mount directory so <see cref="DefaultFilesMiddleware"/> can serve <c>index.html</c>.
+        /// </para>
         /// </remarks>
         /// <param name="app">The application builder.</param>
-        /// <param name="configureContentTypes">Optional content type mappings.</param>
-        /// <param name="enableSpaFallback">If true, rewrites deep links under the mount to the mount directory.</param>
-        /// <returns>The same <see cref="IApplicationBuilder"/> for chaining.</returns>
+        /// <param name="configureContentTypes">Optional content type mappings (for example PWA / Blazor extensions).</param>
+        /// <param name="enableSpaFallback">
+        /// If <c>true</c>, rewrites deep links under the mount (with no extension and no physical file) to the mount directory.
+        /// </param>
+        /// <returns>The same <see cref="IApplicationBuilder"/> instance for chaining.</returns>
+        /// <example>
+        /// <code>
+        /// app.UseDynamicNonAssetFiles(p =&gt; p.AddPwaAndBlazorMappings(), enableSpaFallback: true);
+        /// </code>
+        /// </example>
         public static IApplicationBuilder UseDynamicNonAssetFiles(
             this IApplicationBuilder app,
             Action<FileExtensionContentTypeProvider>? configureContentTypes = null,
@@ -43,17 +70,39 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
         /// Serves a static-only folder mounted at <paramref name="mountPath"/> from <c>wwwroot</c> plus the mount segment.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// If <paramref name="mountPath"/> is null or whitespace, it defaults to <c>/dynamic</c>.
-        /// The physical folder is derived from the mount, for example <c>/dynamic</c> maps to <c>wwwroot/dynamic</c>.
-        ///
-        /// For deep links (no file extension) that look like navigation requests, the path is rewritten to the mount directory
-        /// so DefaultFiles can resolve <c>index.html</c>.
+        /// The physical folder is derived from the mount path:
+        /// <c>/dynamic</c> maps to <c>wwwroot/dynamic</c>, and <c>/foo/bar</c> maps to <c>wwwroot/foo/bar</c>.
+        /// </para>
+        /// <para>
+        /// SPA behavior: when <paramref name="enableSpaFallback"/> is enabled, deep links under the mount that have no extension
+        /// and do not correspond to an existing physical file are rewritten to the mount directory. This allows
+        /// <see cref="DefaultFilesMiddleware"/> to resolve <c>index.html</c> deterministically.
+        /// </para>
+        /// <para>
+        /// Pipeline ordering note: this should be placed before endpoint mappings such as <c>MapStaticAssets()</c>,
+        /// <c>MapRazorComponents(...)</c>, and any fallbacks, so the static subtree is served first and remains isolated.
+        /// </para>
         /// </remarks>
         /// <param name="app">The application builder.</param>
-        /// <param name="mountPath">Request mount path, for example <c>/dynamic</c>.</param>
+        /// <param name="mountPath">Request mount path, for example <c>/app</c> or <c>app</c>.</param>
         /// <param name="configureContentTypes">Optional content type mappings.</param>
-        /// <param name="enableSpaFallback">If true, rewrites deep links under the mount to the mount directory.</param>
-        /// <returns>The same <see cref="IApplicationBuilder"/> for chaining.</returns>
+        /// <param name="enableSpaFallback">
+        /// If <c>true</c>, rewrites deep links under the mount (no extension and no physical file) to the mount directory.
+        /// </param>
+        /// <returns>The same <see cref="IApplicationBuilder"/> instance for chaining.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="app"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="mountPath"/> normalizes to an empty value.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when <see cref="IWebHostEnvironment.WebRootPath"/> is not set, or when the derived physical folder escapes the web root.
+        /// </exception>
+        /// <example>
+        /// <code>
+        /// // In Program.Main, before MapStaticAssets() and MapRazorComponents(...)
+        /// app.UseNonAssetFiles("app", p =&gt; p.AddPwaAndBlazorMappings(), enableSpaFallback: true);
+        /// </code>
+        /// </example>
         public static IApplicationBuilder UseNonAssetFiles(
             this IApplicationBuilder app,
             string? mountPath = null,
@@ -62,16 +111,17 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
         {
             ArgumentNullException.ThrowIfNull(app);
 
+            // Reviewer note: Accept "/app" and "app", normalize to "/app".
             mountPath = string.IsNullOrWhiteSpace(mountPath) ? "/dynamic" : mountPath.Trim();
             if (!mountPath.StartsWith("/", StringComparison.Ordinal))
                 mountPath = "/" + mountPath;
 
-            // Normalize: treat "/dynamic/" same as "/dynamic"
+            // Reviewer note: Normalize "/app/" to "/app".
             mountPath = mountPath.TrimEnd('/');
             if (mountPath.Length == 0)
                 throw new ArgumentException("Mount path must not resolve to empty.", nameof(mountPath));
 
-            // Derive folder under web root from mount path: "/dynamic" -> "dynamic", "/foo/bar" -> "foo/bar"
+            // Reviewer note: Derive folder under web root from mount path: "/app" -> "app", "/foo/bar" -> "foo/bar".
             var folderUnderWebRoot = mountPath.TrimStart('/');
             if (string.IsNullOrWhiteSpace(folderUnderWebRoot))
                 throw new ArgumentException("Mount path must contain at least one segment.", nameof(mountPath));
@@ -103,8 +153,10 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
                 ctx => ctx.Request.Path.StartsWithSegments(requestPath),
                 branch =>
                 {
-                    // If routing already selected an endpoint, StaticFileMiddleware can effectively no-op.
-                    // For this static-only subtree, clearing the endpoint is safe.
+                    // Reviewer note:
+                    // If endpoint routing already selected an endpoint (and it has a delegate),
+                    // static file middleware may not serve. Clearing it in this static-only subtree
+                    // ensures the file pipeline can run and avoids falling through into later endpoints.
                     branch.Use(static async (ctx, next) =>
                     {
                         var ep = ctx.GetEndpoint();
@@ -117,7 +169,7 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
                         await next().ConfigureAwait(false);
                     });
 
-                    // Normalize "/dynamic" to "/dynamic/" so DefaultFiles can kick in.
+                    // Reviewer note: Normalize "/app" to "/app/" so DefaultFiles can match.
                     branch.Use(async (ctx, next) =>
                     {
                         if (ctx.Request.Path.Equals(requestPath, StringComparison.Ordinal))
@@ -128,8 +180,11 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
 
                     if (enableSpaFallback)
                     {
+                        // Reviewer note:
                         // Rewrite deep links under the mount (no extension) to the mount directory,
-                        // so DefaultFiles serves index.html. Keep this conservative to avoid rewriting non-navigation calls.
+                        // so DefaultFiles serves index.html. This is intentionally conservative:
+                        // - extension present => treat as asset request
+                        // - physical file exists => do not rewrite
                         branch.Use(async (ctx, next) =>
                         {
                             if (ctx.Request.Path.StartsWithSegments(requestPath, out var remaining))
@@ -156,7 +211,7 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
                         });
                     }
 
-                    // Only serve index.html as the default (deterministic SPA behavior).
+                    // Reviewer note: Only serve index.html as the default (deterministic SPA behavior).
                     branch.UseDefaultFiles(new DefaultFilesOptions
                     {
                         RequestPath = requestPath,
@@ -171,7 +226,7 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
                         ContentTypeProvider = contentTypes
                     });
 
-                    // Terminal 404 for anything not served by static files in this subtree.
+                    // Reviewer note: Terminal 404 for anything not served by static files in this subtree.
                     branch.Run(static ctx =>
                     {
                         if (!ctx.Response.HasStarted)

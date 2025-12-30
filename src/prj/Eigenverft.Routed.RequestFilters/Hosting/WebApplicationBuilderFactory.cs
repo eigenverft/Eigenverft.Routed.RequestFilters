@@ -66,7 +66,7 @@ namespace Eigenverft.Routed.RequestFilters.Hosting
         /// <returns>A configured <see cref="WebApplicationBuilder"/>.</returns>
         public static WebApplicationBuilder CreateWithDefaultDirectory(
             IReadOnlyDictionary<string, string>? folderMap = null,
-            bool includeCommandLineArgs = false,
+            bool includeCommandLineArgs = true,
             bool strictWwwrootName = true)
         {
             folderMap ??= BuildDefaultMap();

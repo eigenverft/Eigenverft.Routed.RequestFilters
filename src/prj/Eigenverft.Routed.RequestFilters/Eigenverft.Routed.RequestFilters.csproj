@@ -84,6 +84,9 @@
 	  <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
 	  <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
 	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="Utilities\Storage\AppDataDirectory\" />
+	</ItemGroup>
 
 	<PropertyGroup Condition="'$(Stage)' == 'publish'">
 		<!-- Specify the target runtime; adjust as needed (e.g., win-x86, linux-x64) -->

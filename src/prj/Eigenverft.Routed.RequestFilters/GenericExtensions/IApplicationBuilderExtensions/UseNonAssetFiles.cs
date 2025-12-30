@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 
-namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions
+namespace Eigenverft.App.GlobalServerPwaHost
 {
     /// <summary>
     /// Provides middleware helpers to serve an isolated “static-only” subtree from <c>wwwroot</c>
@@ -37,33 +37,28 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
         /// </summary>
         /// <remarks>
         /// <para>
-        /// This is a convenience wrapper over <see cref="UseNonAssetFiles(IApplicationBuilder, string?, Action{FileExtensionContentTypeProvider}?, bool)"/>.
+        /// This is a convenience wrapper over <see cref="UseNonAssetFiles(IApplicationBuilder, string?, Action{FileExtensionContentTypeProvider}?)"/>.
         /// </para>
         /// <para>
         /// The branch is terminal: if a file is not served, the response is <c>404</c> and no later middleware/endpoints run.
-        /// Deep links can be rewritten to the mount directory so <see cref="DefaultFilesMiddleware"/> can serve <c>index.html</c>.
+        /// Default files are enabled, so <c>/dynamic/</c> can serve <c>index.html</c>.
         /// </para>
         /// </remarks>
         /// <param name="app">The application builder.</param>
         /// <param name="configureContentTypes">Optional content type mappings (for example PWA / Blazor extensions).</param>
-        /// <param name="enableSpaFallback">
-        /// If <c>true</c>, rewrites deep links under the mount (with no extension and no physical file) to the mount directory.
-        /// </param>
         /// <returns>The same <see cref="IApplicationBuilder"/> instance for chaining.</returns>
         /// <example>
         /// <code>
-        /// app.UseDynamicNonAssetFiles(p =&gt; p.AddPwaAndBlazorMappings(), enableSpaFallback: true);
+        /// app.UseDynamicNonAssetFiles(p =&gt; p.AddPwaAndBlazorMappings());
         /// </code>
         /// </example>
         public static IApplicationBuilder UseDynamicNonAssetFiles(
             this IApplicationBuilder app,
-            Action<FileExtensionContentTypeProvider>? configureContentTypes = null,
-            bool enableSpaFallback = true)
+            Action<FileExtensionContentTypeProvider>? configureContentTypes = null)
         {
             return app.UseNonAssetFiles(
                 mountPath: "/dynamic",
-                configureContentTypes: configureContentTypes,
-                enableSpaFallback: enableSpaFallback);
+                configureContentTypes: configureContentTypes);
         }
 
         /// <summary>
@@ -76,9 +71,8 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
         /// <c>/dynamic</c> maps to <c>wwwroot/dynamic</c>, and <c>/foo/bar</c> maps to <c>wwwroot/foo/bar</c>.
         /// </para>
         /// <para>
-        /// SPA behavior: when <paramref name="enableSpaFallback"/> is enabled, deep links under the mount that have no extension
-        /// and do not correspond to an existing physical file are rewritten to the mount directory. This allows
-        /// <see cref="DefaultFilesMiddleware"/> to resolve <c>index.html</c> deterministically.
+        /// Default file behavior: the branch enables <see cref="DefaultFilesMiddleware"/> and serves only <c>index.html</c>
+        /// as the default file name. This provides deterministic “app root” behavior for folder URLs.
         /// </para>
         /// <para>
         /// Pipeline ordering note: this should be placed before endpoint mappings such as <c>MapStaticAssets()</c>,
@@ -88,9 +82,6 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
         /// <param name="app">The application builder.</param>
         /// <param name="mountPath">Request mount path, for example <c>/app</c> or <c>app</c>.</param>
         /// <param name="configureContentTypes">Optional content type mappings.</param>
-        /// <param name="enableSpaFallback">
-        /// If <c>true</c>, rewrites deep links under the mount (no extension and no physical file) to the mount directory.
-        /// </param>
         /// <returns>The same <see cref="IApplicationBuilder"/> instance for chaining.</returns>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="app"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown when <paramref name="mountPath"/> normalizes to an empty value.</exception>
@@ -100,14 +91,13 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
         /// <example>
         /// <code>
         /// // In Program.Main, before MapStaticAssets() and MapRazorComponents(...)
-        /// app.UseNonAssetFiles("app", p =&gt; p.AddPwaAndBlazorMappings(), enableSpaFallback: true);
+        /// app.UseNonAssetFiles("apps", p =&gt; p.AddPwaAndBlazorMappings());
         /// </code>
         /// </example>
         public static IApplicationBuilder UseNonAssetFiles(
             this IApplicationBuilder app,
             string? mountPath = null,
-            Action<FileExtensionContentTypeProvider>? configureContentTypes = null,
-            bool enableSpaFallback = true)
+            Action<FileExtensionContentTypeProvider>? configureContentTypes = null)
         {
             ArgumentNullException.ThrowIfNull(app);
 
@@ -177,39 +167,6 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilder
 
                         await next().ConfigureAwait(false);
                     });
-
-                    if (enableSpaFallback)
-                    {
-                        // Reviewer note:
-                        // Rewrite deep links under the mount (no extension) to the mount directory,
-                        // so DefaultFiles serves index.html. This is intentionally conservative:
-                        // - extension present => treat as asset request
-                        // - physical file exists => do not rewrite
-                        branch.Use(async (ctx, next) =>
-                        {
-                            if (ctx.Request.Path.StartsWithSegments(requestPath, out var remaining))
-                            {
-                                var remainingValue = remaining.Value ?? string.Empty;
-
-                                // Only consider paths deeper than "/".
-                                if (!string.IsNullOrEmpty(remainingValue) && remainingValue != "/")
-                                {
-                                    // If there is an extension, it is an asset-like request, do not rewrite.
-                                    if (!Path.HasExtension(remainingValue))
-                                    {
-                                        var rel = remainingValue.TrimStart('/');
-                                        var info = fileProvider.GetFileInfo(rel);
-
-                                        // If it is not an existing file, treat it as a SPA route and rewrite to mount directory.
-                                        if (!info.Exists)
-                                            ctx.Request.Path = requestPath.Add(new PathString("/"));
-                                    }
-                                }
-                            }
-
-                            await next().ConfigureAwait(false);
-                        });
-                    }
 
                     // Reviewer note: Only serve index.html as the default (deterministic SPA behavior).
                     branch.UseDefaultFiles(new DefaultFilesOptions

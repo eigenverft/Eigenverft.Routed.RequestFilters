@@ -20,6 +20,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 
 using Microsoft.Extensions.Configuration.Json;
@@ -235,6 +236,69 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
             }
 
             return builder;
+        }
+    }
+
+    /// <summary>
+    /// Builder-level convenience overloads that forward to <see cref="EncodedSettingsLayerExtensions.AddEncodedSettingsLayer"/>
+    /// using the builder's current <see cref="IHostEnvironment"/>.
+    /// </summary>
+    public static class EncodedSettingsLayerBuilderExtensions
+    {
+        /// <summary>
+        /// Convenience overload for <see cref="WebApplicationBuilder"/> that applies the builder's environment automatically.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is a thin forwarder that calls <see cref="EncodedSettingsLayerExtensions.AddEncodedSettingsLayer"/>
+        /// with <paramref name="builder"/>.<see cref="WebApplicationBuilder.Environment"/> as the <see cref="IHostEnvironment"/>.
+        /// </para>
+        /// <para>Example:</para>
+        /// <code><![CDATA[
+        /// var settingsPath = Path.Combine(defaultDirs["ApplicationSettings"], "helloworld.json");
+        ///
+        /// builder.AddEncodedAppSettingsLayer(
+        ///     commonJsonFilePath: settingsPath,
+        ///     keyPathPattern: "*Passw*",
+        ///     encode: SettingsValueEncoders.EncodeDpapiMachineBase64);
+        /// ]]></code>
+        /// </remarks>
+        /// <param name="builder">The web application builder.</param>
+        /// <param name="commonJsonFilePath">Full path to the common JSON settings file.</param>
+        /// <param name="keyPathPattern">Glob pattern matched against full key paths.</param>
+        /// <param name="encode">Encoder function that produces the persisted encoded value.</param>
+        /// <param name="optionalCommon">Whether the common file is optional.</param>
+        /// <param name="optionalEnvironment">Whether the environment override file is optional.</param>
+        /// <param name="reloadOnChange">Whether to reload JSON providers on file changes.</param>
+        /// <param name="nullAsEmpty">When true, JSON null is treated as empty string and encoded.</param>
+        /// <param name="encodeEnvironmentFileIfPresent">When true, also encodes the environment override file if it exists.</param>
+        /// <param name="enableEncodingStep">When true, performs the encoding step (mutates disk). Disable to load-only.</param>
+        /// <returns>The same <see cref="ConfigurationManager"/> for chaining.</returns>
+        public static ConfigurationManager AddEncodedAppSettingsLayer(
+            this WebApplicationBuilder builder,
+            string commonJsonFilePath,
+            string keyPathPattern,
+            Func<string, string> encode,
+            bool optionalCommon = false,
+            bool optionalEnvironment = true,
+            bool reloadOnChange = true,
+            bool nullAsEmpty = true,
+            bool encodeEnvironmentFileIfPresent = true,
+            bool enableEncodingStep = true)
+        {
+            EvfGuard.NotNull(builder);
+
+            return builder.Configuration.AddEncodedSettingsLayer(
+                commonJsonFilePath: commonJsonFilePath,
+                hostEnvironment: builder.Environment,
+                keyPathPattern: keyPathPattern,
+                encode: encode,
+                optionalCommon: optionalCommon,
+                optionalEnvironment: optionalEnvironment,
+                reloadOnChange: reloadOnChange,
+                nullAsEmpty: nullAsEmpty,
+                encodeEnvironmentFileIfPresent: encodeEnvironmentFileIfPresent,
+                enableEncodingStep: enableEncodingStep);
         }
     }
 

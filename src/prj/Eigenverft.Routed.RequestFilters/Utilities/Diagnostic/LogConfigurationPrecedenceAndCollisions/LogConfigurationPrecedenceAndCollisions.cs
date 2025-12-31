@@ -214,12 +214,12 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Diagnostic.LogConfiguration
                 .OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            logger.Log(level, "Configuration key collisions found: {Count}.", collisions.Count);
-
             if (collisions.Count == 0)
             {
                 return;
             }
+
+            logger.Log(level, "Configuration key collisions found: {Count}.", collisions.Count);
 
             foreach (var c in collisions)
             {

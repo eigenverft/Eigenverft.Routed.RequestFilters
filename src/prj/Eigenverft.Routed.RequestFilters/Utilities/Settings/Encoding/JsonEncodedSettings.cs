@@ -714,6 +714,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding
         /// <returns>The number of values updated.</returns>
         /// <exception cref="FileNotFoundException">Thrown when <paramref name="jsonFilePath"/> does not exist.</exception>
         /// <exception cref="InvalidDataException">Thrown when parsing produces a null JSON root.</exception>
+        [Obsolete("Deprecated: use builder.AddEncodedSettingsLayer(...) instead. This API is no longer supported.", error: false)]
         public static int EncodeStringValues(string jsonFilePath, string keyPathPattern, Func<string, string> encode, bool nullAsEmpty = true)
         {
             Guard.IsNotNullOrWhiteSpace(jsonFilePath);
@@ -1087,6 +1088,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding
         /// <param name="optional">Whether the file is optional.</param>
         /// <param name="reloadOnChange">Whether to reload when the file changes.</param>
         /// <returns>The same builder for chaining.</returns>
+        [Obsolete("Deprecated: use builder.AddEncodedSettingsLayer(...) instead. This API is no longer supported.", error: false)]
         public static IConfigurationBuilder AddJsonFileWithDecoding(this IConfigurationBuilder builder, string path, bool optional = false, bool reloadOnChange = false)
         {
             Guard.IsNotNull(builder);

@@ -1,5 +1,5 @@
 ﻿// -----------------------------------------------------------------------------
-// EncodedAppSettingsLayerStandalone.cs
+// AddEncodedSettingsLayer.cs
 //
 // Self-contained helpers to:
 //   1) Encode sensitive string values "at rest" inside appsettings.json (and optional appsettings.{Environment}.json)
@@ -16,16 +16,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 using Microsoft.Extensions.Configuration;
+
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.Hosting;
 
-namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettingsLayering
+namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
 {
     /// <summary>
     /// Adds an "encoded appsettings layer": encode values at rest on disk, then load JSON with decoding enabled.
@@ -40,7 +40,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
     /// Encoding modifies the JSON files on disk. Decoding happens in-memory during provider load and reload.
     /// </para>
     /// </remarks>
-    public static class EncodedAppSettingsLayerExtensions
+    public static class EncodedSettingsLayerExtensions
     {
         /// <summary>
         /// Do-it-all helper: encodes values at rest in the common appsettings JSON file and (if present) the environment override file,
@@ -55,8 +55,8 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         /// <code><![CDATA[
         /// var settingsPath = Path.Combine(defaultDirs["ApplicationSettings"], "appsettings.json");
         ///
-        /// builder.Configuration.AddEncodedAppSettingsLayer(
-        ///     commonAppSettingsJsonPath: settingsPath,
+        /// builder.Configuration.AddEncodedSettingsLayer(
+        ///     commonJsonFilePath: settingsPath,
         ///     hostEnvironment: builder.Environment,
         ///     keyPathPattern: "*Passw*",
         ///     encode: SettingsValueEncoders.EncodeDpapiMachineBase64,
@@ -69,7 +69,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         /// ]]></code>
         /// </remarks>
         /// <param name="configuration">The configuration manager to mutate and add providers to.</param>
-        /// <param name="commonAppSettingsJsonPath">Full path to the common appsettings file, for example <c>.../appsettings.json</c>.</param>
+        /// <param name="commonJsonFilePath">Full path to the common appsettings file, for example <c>.../appsettings.json</c>.</param>
         /// <param name="hostEnvironment">The host environment used to locate the environment override file.</param>
         /// <param name="keyPathPattern">Glob pattern matched against full key paths (for example <c>*Passw*</c>).</param>
         /// <param name="encode">Encoder function that produces the persisted encoded value.</param>
@@ -80,9 +80,9 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         /// <param name="encodeEnvironmentFileIfPresent">When <see langword="true"/>, also encodes the environment override file if it exists.</param>
         /// <param name="enableEncodingStep">When <see langword="true"/>, performs the encoding step (mutates disk). Disable to load-only.</param>
         /// <returns>The same <see cref="ConfigurationManager"/> for chaining.</returns>
-        public static ConfigurationManager AddEncodedAppSettingsLayer(
+        public static ConfigurationManager AddEncodedSettingsLayer(
             this ConfigurationManager configuration,
-            string commonAppSettingsJsonPath,
+            string commonJsonFilePath,
             IHostEnvironment hostEnvironment,
             string keyPathPattern,
             Func<string, string> encode,
@@ -95,14 +95,14 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         {
             EvfGuard.NotNull(configuration);
             EvfGuard.NotNull(hostEnvironment);
-            EvfGuard.NotNullOrWhiteSpace(commonAppSettingsJsonPath);
+            EvfGuard.NotNullOrWhiteSpace(commonJsonFilePath);
             EvfGuard.NotNullOrWhiteSpace(keyPathPattern);
             EvfGuard.NotNull(encode);
 
             if (enableEncodingStep)
             {
-                _ = configuration.EncodeAppSettingsLayerValuesInPlace(
-                    commonAppSettingsJsonPath: commonAppSettingsJsonPath,
+                _ = configuration.EncodeJsonSettingsLayerValuesInPlace(
+                    commonJsonFilePath: commonJsonFilePath,
                     hostEnvironment: hostEnvironment,
                     keyPathPattern: keyPathPattern,
                     encode: encode,
@@ -110,8 +110,8 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
                     encodeEnvironmentFileIfPresent: encodeEnvironmentFileIfPresent);
             }
 
-            _ = ((IConfigurationBuilder)configuration).AddDecodedAppSettingsLayer(
-                commonAppSettingsJsonPath: commonAppSettingsJsonPath,
+            _ = ((IConfigurationBuilder)configuration).AddDecodedSettingsLayer(
+                commonJsonFilePath: commonJsonFilePath,
                 hostEnvironment: hostEnvironment,
                 optionalCommon: optionalCommon,
                 optionalEnvironment: optionalEnvironment,
@@ -129,16 +129,16 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         /// </para>
         /// </remarks>
         /// <param name="configuration">Configuration manager used for convenience.</param>
-        /// <param name="commonAppSettingsJsonPath">Full path to the common appsettings file.</param>
+        /// <param name="commonJsonFilePath">Full path to the common appsettings file.</param>
         /// <param name="hostEnvironment">Host environment used to locate the override file.</param>
         /// <param name="keyPathPattern">Glob pattern matched against full key paths.</param>
         /// <param name="encode">Encoder function.</param>
         /// <param name="nullAsEmpty">Treat JSON null as empty string and encode it.</param>
         /// <param name="encodeEnvironmentFileIfPresent">Also encodes environment override file if found.</param>
         /// <returns>Total number of updated values across processed files.</returns>
-        public static int EncodeAppSettingsLayerValuesInPlace(
+        public static int EncodeJsonSettingsLayerValuesInPlace(
             this ConfigurationManager configuration,
-            string commonAppSettingsJsonPath,
+            string commonJsonFilePath,
             IHostEnvironment hostEnvironment,
             string keyPathPattern,
             Func<string, string> encode,
@@ -147,26 +147,26 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         {
             EvfGuard.NotNull(configuration);
             EvfGuard.NotNull(hostEnvironment);
-            EvfGuard.NotNullOrWhiteSpace(commonAppSettingsJsonPath);
+            EvfGuard.NotNullOrWhiteSpace(commonJsonFilePath);
             EvfGuard.NotNullOrWhiteSpace(keyPathPattern);
             EvfGuard.NotNull(encode);
 
-            if (!File.Exists(commonAppSettingsJsonPath))
+            if (!File.Exists(commonJsonFilePath))
             {
-                throw new FileNotFoundException("Common appsettings file not found.", commonAppSettingsJsonPath);
+                throw new FileNotFoundException("Common appsettings file not found.", commonJsonFilePath);
             }
 
             var updated = 0;
 
             updated += JsonSettingsFileEncoder.EncodeStringValues(
-                jsonFilePath: commonAppSettingsJsonPath,
+                jsonFilePath: commonJsonFilePath,
                 keyPathPattern: keyPathPattern,
                 encode: encode,
                 nullAsEmpty: nullAsEmpty);
 
             if (encodeEnvironmentFileIfPresent &&
-                AppSettingsEnvironmentFileResolver.TryResolveEnvironmentOverride(
-                    commonAppSettingsJsonPath,
+                JsonEnvironmentOverrideFileResolver.TryResolveEnvironmentOverride(
+                    commonJsonFilePath,
                     hostEnvironment.EnvironmentName,
                     out var environmentJsonPath))
             {
@@ -189,15 +189,15 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         /// </para>
         /// </remarks>
         /// <param name="builder">Configuration builder.</param>
-        /// <param name="commonAppSettingsJsonPath">Full path to common appsettings JSON file.</param>
+        /// <param name="commonJsonFilePath">Full path to common appsettings JSON file.</param>
         /// <param name="hostEnvironment">Host environment used to locate the override file.</param>
         /// <param name="optionalCommon">When <see langword="true"/>, common file is optional.</param>
         /// <param name="optionalEnvironment">When <see langword="true"/>, environment override file is optional.</param>
         /// <param name="reloadOnChange">When <see langword="true"/>, reloads when the file changes.</param>
         /// <returns>The same builder for chaining.</returns>
-        public static IConfigurationBuilder AddDecodedAppSettingsLayer(
+        public static IConfigurationBuilder AddDecodedSettingsLayer(
             this IConfigurationBuilder builder,
-            string commonAppSettingsJsonPath,
+            string commonJsonFilePath,
             IHostEnvironment hostEnvironment,
             bool optionalCommon = false,
             bool optionalEnvironment = true,
@@ -205,15 +205,15 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
         {
             EvfGuard.NotNull(builder);
             EvfGuard.NotNull(hostEnvironment);
-            EvfGuard.NotNullOrWhiteSpace(commonAppSettingsJsonPath);
+            EvfGuard.NotNullOrWhiteSpace(commonJsonFilePath);
 
             builder.AddJsonFileWithDecodingStandalone(
-                path: commonAppSettingsJsonPath,
+                path: commonJsonFilePath,
                 optional: optionalCommon,
                 reloadOnChange: reloadOnChange);
 
-            if (AppSettingsEnvironmentFileResolver.TryResolveEnvironmentOverride(
-                    commonAppSettingsJsonPath,
+            if (JsonEnvironmentOverrideFileResolver.TryResolveEnvironmentOverride(
+                    commonJsonFilePath,
                     hostEnvironment.EnvironmentName,
                     out var environmentJsonPath))
             {
@@ -227,8 +227,8 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
 
             if (!optionalEnvironment)
             {
-                var expected = AppSettingsEnvironmentFileResolver.GetExpectedEnvironmentOverridePath(
-                    commonAppSettingsJsonPath,
+                var expected = JsonEnvironmentOverrideFileResolver.GetExpectedEnvironmentOverridePath(
+                    commonJsonFilePath,
                     hostEnvironment.EnvironmentName);
 
                 throw new FileNotFoundException("Environment appsettings file not found (required).", expected);
@@ -265,13 +265,13 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
     /// On case-sensitive file systems, multiple casing variants can exist at once. This resolver rejects ambiguous matches.
     /// </para>
     /// </remarks>
-    internal static class AppSettingsEnvironmentFileResolver
+    internal static class JsonEnvironmentOverrideFileResolver
     {
-        public static bool TryResolveEnvironmentOverride(string commonAppSettingsJsonPath, string environmentName, out string environmentAppSettingsJsonPath)
+        public static bool TryResolveEnvironmentOverride(string commonJsonFilePath, string environmentName, out string environmentAppSettingsJsonPath)
         {
             environmentAppSettingsJsonPath = string.Empty;
 
-            EvfGuard.NotNullOrWhiteSpace(commonAppSettingsJsonPath);
+            EvfGuard.NotNullOrWhiteSpace(commonJsonFilePath);
 
             environmentName ??= string.Empty;
             if (string.IsNullOrWhiteSpace(environmentName))
@@ -279,8 +279,8 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
                 return false;
             }
 
-            var dir = Path.GetDirectoryName(commonAppSettingsJsonPath) ?? string.Empty;
-            var file = Path.GetFileName(commonAppSettingsJsonPath);
+            var dir = Path.GetDirectoryName(commonJsonFilePath) ?? string.Empty;
+            var file = Path.GetFileName(commonJsonFilePath);
             if (string.IsNullOrWhiteSpace(dir) || string.IsNullOrWhiteSpace(file))
             {
                 return false;
@@ -320,12 +320,12 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.Encoding.AppSettin
             return true;
         }
 
-        public static string GetExpectedEnvironmentOverridePath(string commonAppSettingsJsonPath, string environmentName)
+        public static string GetExpectedEnvironmentOverridePath(string commonJsonFilePath, string environmentName)
         {
             environmentName ??= string.Empty;
 
-            var dir = Path.GetDirectoryName(commonAppSettingsJsonPath) ?? string.Empty;
-            var file = Path.GetFileName(commonAppSettingsJsonPath);
+            var dir = Path.GetDirectoryName(commonJsonFilePath) ?? string.Empty;
+            var file = Path.GetFileName(commonJsonFilePath);
 
             var baseName = Path.GetFileNameWithoutExtension(file);
             var ext = Path.GetExtension(file);

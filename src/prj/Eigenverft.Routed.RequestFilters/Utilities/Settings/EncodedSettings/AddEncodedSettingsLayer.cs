@@ -331,7 +331,10 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
     /// </remarks>
     internal static class JsonEnvironmentOverrideFileResolver
     {
-        public static bool TryResolveEnvironmentOverride(string commonJsonFilePath, string environmentName, out string environmentAppSettingsJsonPath)
+        public static bool TryResolveEnvironmentOverride(
+            string commonJsonFilePath,
+            string environmentName,
+            out string environmentAppSettingsJsonPath)
         {
             environmentAppSettingsJsonPath = string.Empty;
 
@@ -345,7 +348,13 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
 
             var dir = Path.GetDirectoryName(commonJsonFilePath) ?? string.Empty;
             var file = Path.GetFileName(commonJsonFilePath);
+
             if (string.IsNullOrWhiteSpace(dir) || string.IsNullOrWhiteSpace(file))
+            {
+                return false;
+            }
+
+            if (!Directory.Exists(dir))
             {
                 return false;
             }
@@ -357,30 +366,29 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
                 ext = ".json";
             }
 
-            var candidates = new[]
-            {
-                Path.Combine(dir, $"{baseName}.{environmentName}{ext}"),
-                Path.Combine(dir, $"{baseName}.{environmentName.ToLowerInvariant()}{ext}"),
-                Path.Combine(dir, $"{baseName}.{environmentName.ToUpperInvariant()}{ext}"),
-            }
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+            var expectedFileName = $"{baseName}.{environmentName}{ext}";
 
-            var existing = candidates.Where(File.Exists).ToArray();
+            // Reviewer note: Enumerate actual file system entries to avoid File.Exists() case-folding issues
+            // on case-insensitive file systems (Windows), while still detecting true casing duplicates on
+            // case-sensitive file systems (Linux).
+            var matches = Directory.EnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly)
+                .Where(p => string.Equals(Path.GetFileName(p), expectedFileName, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
 
-            if (existing.Length == 0)
+            if (matches.Length == 0)
             {
                 return false;
             }
 
-            if (existing.Length > 1)
+            if (matches.Length > 1)
             {
                 throw new InvalidOperationException(
-                    "Multiple environment appsettings files were found. Remove duplicates to keep precedence deterministic. Found: " +
-                    string.Join(", ", existing));
+                    "Multiple environment appsettings files were found that differ only by casing. " +
+                    "Remove duplicates to keep precedence deterministic. Found: " +
+                    string.Join(", ", matches));
             }
 
-            environmentAppSettingsJsonPath = existing[0];
+            environmentAppSettingsJsonPath = matches[0];
             return true;
         }
 
@@ -401,6 +409,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
             return Path.Combine(dir, $"{baseName}.{environmentName}{ext}");
         }
     }
+
 
     /// <summary>
     /// Encodes string values inside a JSON settings file by matching full key paths.

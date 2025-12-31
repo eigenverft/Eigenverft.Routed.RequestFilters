@@ -220,16 +220,21 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.ConfigureWebHostBui
                     ? (port, configure) => serverOptions.ListenLocalhost(port, configure)
                     : (port, configure) => serverOptions.ListenAnyIP(port, configure);
 
-                if (!settings.HTTP_PORT.HasValue && !settings.HTTPS_PORT.HasValue)
+                // HTTP rule change:
+                // - null => disabled
+                // - 0 or negative => disabled (skip HTTP configuration)
+                // - positive => validated and configured
+                var isHttpEnabled = TryGetEnabledPortSkippingNonPositive(settings.HTTP_PORT, nameof(settings.HTTP_PORT), out var httpPort);
+                var isHttpsEnabled = settings.HTTPS_PORT.HasValue;
+
+                if (!isHttpEnabled && !isHttpsEnabled)
                 {
-                    throw new ArgumentException("At least one of HTTP_PORT or HTTPS_PORT must be specified.");
+                    throw new ArgumentException("At least one of HTTP_PORT or HTTPS_PORT must be specified/enabled.");
                 }
 
-                if (settings.HTTP_PORT.HasValue)
+                if (isHttpEnabled)
                 {
-                    ValidatePort(settings.HTTP_PORT.Value, nameof(settings.HTTP_PORT));
-
-                    listen(settings.HTTP_PORT.Value, lo =>
+                    listen(httpPort, lo =>
                     {
                         if (protocols.HasValue)
                         {
@@ -238,9 +243,9 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.ConfigureWebHostBui
                     });
                 }
 
-                if (settings.HTTPS_PORT.HasValue)
+                if (isHttpsEnabled)
                 {
-                    ValidatePort(settings.HTTPS_PORT.Value, nameof(settings.HTTPS_PORT));
+                    ValidatePort(settings.HTTPS_PORT!.Value, nameof(settings.HTTPS_PORT));
 
                     listen(settings.HTTPS_PORT.Value, lo =>
                     {
@@ -271,6 +276,26 @@ namespace Eigenverft.Routed.RequestFilters.GenericExtensions.ConfigureWebHostBui
                     }
                 }
             });
+
+            static bool TryGetEnabledPortSkippingNonPositive(int? port, string paramName, out int enabledPort)
+            {
+                enabledPort = default;
+
+                if (!port.HasValue)
+                {
+                    return false;
+                }
+
+                // Reviewer note: Explicitly treat 0/negative as "disabled" (no exception, no listener).
+                if (port.Value <= 0)
+                {
+                    return false;
+                }
+
+                ValidatePort(port.Value, paramName);
+                enabledPort = port.Value;
+                return true;
+            }
 
             static void ValidatePort(int port, string paramName)
             {

@@ -119,10 +119,4 @@
 
 	<Import Project="$(MSBuildProjectDirectory)\BuildTargets\BuildInfo.targets" Condition="Exists('$(MSBuildProjectDirectory)\BuildTargets\BuildInfo.targets')" />
 
-
-
-
-
-
-
 </Project>

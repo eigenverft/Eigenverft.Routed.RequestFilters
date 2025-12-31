@@ -312,4 +312,177 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
         /// <param name="arguments">The arguments for the message template.</param>
         void LogCritical(Exception exception, string messageTemplate, params object?[] arguments);
     }
+
+    /// <summary>
+    /// Provides lazy, level-aware logging on top of an underlying logger instance,
+    /// without requiring a category type parameter.
+    /// </summary>
+    /// <remarks>
+    /// This is the non-generic companion to <see cref="IDeferredLogger{TCategoryName}"/>.
+    /// Use this when you do not want to flow a category type through DI.
+    /// </remarks>
+    public interface IDeferredLogger
+    {
+        /// <summary>
+        /// Determines whether logging is enabled for the specified <paramref name="level"/>.
+        /// </summary>
+        /// <param name="level">The log level to test.</param>
+        /// <returns>
+        /// <c>true</c> if the underlying logger is enabled for <paramref name="level"/>; otherwise <c>false</c>.
+        /// </returns>
+        bool IsEnabled(LogLevel level);
+
+        // -------- GENERIC --------
+
+        /// <summary>
+        /// Logs a message using a deferred message factory at the given <paramref name="level"/>.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="messageFactory">Factory that builds the log message.</param>
+        void Log(LogLevel level, Func<string> messageFactory);
+
+        /// <summary>
+        /// Logs a message using a structured template and deferred arguments at the given <paramref name="level"/>.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="argumentFactories">Factories for the structured arguments.</param>
+        void Log(LogLevel level, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        /// <summary>
+        /// Logs a message using a structured template and eagerly evaluated arguments at the given <paramref name="level"/>.
+        /// Intended for inexpensive argument values.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="arguments">The arguments for the message template.</param>
+        void Log(LogLevel level, string messageTemplate, params object?[] arguments);
+
+        /// <summary>
+        /// Logs a message with an exception using a deferred message factory at the given <paramref name="level"/>.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="exception">The exception to log.</param>
+        /// <param name="messageFactory">Factory that builds the log message.</param>
+        void Log(LogLevel level, Exception exception, Func<string> messageFactory);
+
+        /// <summary>
+        /// Logs a message with an exception and deferred structured arguments at the given <paramref name="level"/>.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="exception">The exception to log.</param>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="argumentFactories">Factories for the structured arguments.</param>
+        void Log(LogLevel level, Exception exception, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        /// <summary>
+        /// Logs a message with an exception and eagerly evaluated arguments at the given <paramref name="level"/>.
+        /// Intended for inexpensive argument values.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="exception">The exception to log.</param>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="arguments">The arguments for the message template.</param>
+        void Log(LogLevel level, Exception exception, string messageTemplate, params object?[] arguments);
+
+        // -------- TRACE --------
+
+        /// <summary>
+        /// Logs a trace message using a deferred message factory.
+        /// </summary>
+        /// <param name="messageFactory">Factory that builds the log message.</param>
+        void LogTrace(Func<string> messageFactory);
+
+        /// <summary>
+        /// Logs a trace message using a structured template and deferred arguments.
+        /// </summary>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="argumentFactories">Factories for the structured arguments.</param>
+        void LogTrace(string messageTemplate, params Func<object?>[] argumentFactories);
+
+        /// <summary>
+        /// Logs a trace message using a structured template and eagerly evaluated arguments.
+        /// Intended for inexpensive argument values.
+        /// </summary>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="arguments">The arguments for the message template.</param>
+        void LogTrace(string messageTemplate, params object?[] arguments);
+
+        /// <summary>
+        /// Logs a trace message with an exception and deferred structured arguments.
+        /// </summary>
+        /// <param name="exception">The exception to log.</param>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="argumentFactories">Factories for the structured arguments.</param>
+        void LogTrace(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        /// <summary>
+        /// Logs a trace message with an exception and eagerly evaluated arguments.
+        /// Intended for inexpensive argument values.
+        /// </summary>
+        /// <param name="exception">The exception to log.</param>
+        /// <param name="messageTemplate">The message template.</param>
+        /// <param name="arguments">The arguments for the message template.</param>
+        void LogTrace(Exception exception, string messageTemplate, params object?[] arguments);
+
+        // -------- DEBUG --------
+
+        void LogDebug(Func<string> messageFactory);
+
+        void LogDebug(string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogDebug(string messageTemplate, params object?[] arguments);
+
+        void LogDebug(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogDebug(Exception exception, string messageTemplate, params object?[] arguments);
+
+        // -------- INFORMATION --------
+
+        void LogInformation(Func<string> messageFactory);
+
+        void LogInformation(string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogInformation(string messageTemplate, params object?[] arguments);
+
+        void LogInformation(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogInformation(Exception exception, string messageTemplate, params object?[] arguments);
+
+        // -------- WARNING --------
+
+        void LogWarning(Func<string> messageFactory);
+
+        void LogWarning(string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogWarning(string messageTemplate, params object?[] arguments);
+
+        void LogWarning(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogWarning(Exception exception, string messageTemplate, params object?[] arguments);
+
+        // -------- ERROR --------
+
+        void LogError(Func<string> messageFactory);
+
+        void LogError(string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogError(string messageTemplate, params object?[] arguments);
+
+        void LogError(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogError(Exception exception, string messageTemplate, params object?[] arguments);
+
+        // -------- CRITICAL --------
+
+        void LogCritical(Func<string> messageFactory);
+
+        void LogCritical(string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogCritical(string messageTemplate, params object?[] arguments);
+
+        void LogCritical(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories);
+
+        void LogCritical(Exception exception, string messageTemplate, params object?[] arguments);
+    }
 }

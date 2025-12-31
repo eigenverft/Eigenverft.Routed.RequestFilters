@@ -399,4 +399,415 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
             return result;
         }
     }
+
+    /// <summary>
+    /// Default implementation of <see cref="IDeferredLogger"/> that wraps an <see cref="ILogger"/>.
+    /// </summary>
+    /// <remarks>
+    /// This implementation creates an <see cref="ILogger"/> via <see cref="ILoggerFactory"/>
+    /// using a fixed category name so consumers do not need to provide a category type.
+    /// </remarks>
+    public sealed class DeferredLogger : IDeferredLogger
+    {
+        private const string DefaultCategoryName = "DeferredLogger";
+        private readonly ILogger _inner;
+
+        /// <summary>
+        /// Initializes a new instance of the logger wrapper.
+        /// </summary>
+        /// <param name="loggerFactory">Factory used to create the underlying logger.</param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown if <paramref name="loggerFactory"/> is null.
+        /// </exception>
+        /// <example>
+        /// <code>
+        /// // DI will provide ILoggerFactory automatically.
+        /// // Inject IDeferredLogger where you need it.
+        /// </code>
+        /// </example>
+        public DeferredLogger(ILoggerFactory loggerFactory)
+        {
+            if (loggerFactory is null)
+            {
+                throw new ArgumentNullException(nameof(loggerFactory));
+            }
+
+            _inner = loggerFactory.CreateLogger(DefaultCategoryName);
+        }
+
+        /// <inheritdoc />
+        public bool IsEnabled(LogLevel level)
+        {
+            // Treat None as "disabled" for convenience.
+            return level != LogLevel.None && _inner.IsEnabled(level);
+        }
+
+        // -------- GENERIC --------
+
+        /// <inheritdoc />
+        public void Log(LogLevel level, Func<string> messageFactory)
+        {
+            if (!IsEnabled(level) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.Log(level, messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void Log(LogLevel level, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!IsEnabled(level))
+            {
+                return;
+            }
+
+            _inner.Log(level, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void Log(LogLevel level, string messageTemplate, params object?[] arguments)
+        {
+            if (!IsEnabled(level))
+            {
+                return;
+            }
+
+            _inner.Log(level, messageTemplate, arguments);
+        }
+
+        /// <inheritdoc />
+        public void Log(LogLevel level, Exception exception, Func<string> messageFactory)
+        {
+            if (!IsEnabled(level) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.Log(level, exception, messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void Log(LogLevel level, Exception exception, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!IsEnabled(level))
+            {
+                return;
+            }
+
+            _inner.Log(level, exception, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void Log(LogLevel level, Exception exception, string messageTemplate, params object?[] arguments)
+        {
+            if (!IsEnabled(level))
+            {
+                return;
+            }
+
+            _inner.Log(level, exception, messageTemplate, arguments);
+        }
+
+        // -------- TRACE --------
+
+        /// <inheritdoc />
+        public void LogTrace(Func<string> messageFactory)
+        {
+            if (!_inner.IsEnabled(LogLevel.Trace) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.LogTrace(messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void LogTrace(string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Trace))
+            {
+                return;
+            }
+
+            _inner.LogTrace(messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogTrace(string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogTrace(messageTemplate, arguments);
+        }
+
+        /// <inheritdoc />
+        public void LogTrace(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Trace))
+            {
+                return;
+            }
+
+            _inner.LogTrace(exception, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogTrace(Exception exception, string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogTrace(exception, messageTemplate, arguments);
+        }
+
+        // -------- DEBUG --------
+
+        /// <inheritdoc />
+        public void LogDebug(Func<string> messageFactory)
+        {
+            if (!_inner.IsEnabled(LogLevel.Debug) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.LogDebug(messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void LogDebug(string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            _inner.LogDebug(messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogDebug(string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogDebug(messageTemplate, arguments);
+        }
+
+        /// <inheritdoc />
+        public void LogDebug(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            _inner.LogDebug(exception, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogDebug(Exception exception, string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogDebug(exception, messageTemplate, arguments);
+        }
+
+        // -------- INFORMATION --------
+
+        /// <inheritdoc />
+        public void LogInformation(Func<string> messageFactory)
+        {
+            if (!_inner.IsEnabled(LogLevel.Information) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.LogInformation(messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void LogInformation(string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Information))
+            {
+                return;
+            }
+
+            _inner.LogInformation(messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogInformation(string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogInformation(messageTemplate, arguments);
+        }
+
+        /// <inheritdoc />
+        public void LogInformation(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Information))
+            {
+                return;
+            }
+
+            _inner.LogInformation(exception, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogInformation(Exception exception, string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogInformation(exception, messageTemplate, arguments);
+        }
+
+        // -------- WARNING --------
+
+        /// <inheritdoc />
+        public void LogWarning(Func<string> messageFactory)
+        {
+            if (!_inner.IsEnabled(LogLevel.Warning) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.LogWarning(messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void LogWarning(string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Warning))
+            {
+                return;
+            }
+
+            _inner.LogWarning(messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogWarning(string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogWarning(messageTemplate, arguments);
+        }
+
+        /// <inheritdoc />
+        public void LogWarning(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Warning))
+            {
+                return;
+            }
+
+            _inner.LogWarning(exception, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogWarning(Exception exception, string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogWarning(exception, messageTemplate, arguments);
+        }
+
+        // -------- ERROR --------
+
+        /// <inheritdoc />
+        public void LogError(Func<string> messageFactory)
+        {
+            if (!_inner.IsEnabled(LogLevel.Error) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.LogError(messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void LogError(string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Error))
+            {
+                return;
+            }
+
+            _inner.LogError(messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogError(string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogError(messageTemplate, arguments);
+        }
+
+        /// <inheritdoc />
+        public void LogError(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Error))
+            {
+                return;
+            }
+
+            _inner.LogError(exception, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogError(Exception exception, string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogError(exception, messageTemplate, arguments);
+        }
+
+        // -------- CRITICAL --------
+
+        /// <inheritdoc />
+        public void LogCritical(Func<string> messageFactory)
+        {
+            if (!_inner.IsEnabled(LogLevel.Critical) || messageFactory is null)
+            {
+                return;
+            }
+
+            _inner.LogCritical(messageFactory());
+        }
+
+        /// <inheritdoc />
+        public void LogCritical(string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Critical))
+            {
+                return;
+            }
+
+            _inner.LogCritical(messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogCritical(string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogCritical(messageTemplate, arguments);
+        }
+
+        /// <inheritdoc />
+        public void LogCritical(Exception exception, string messageTemplate, params Func<object?>[] argumentFactories)
+        {
+            if (!_inner.IsEnabled(LogLevel.Critical))
+            {
+                return;
+            }
+
+            _inner.LogCritical(exception, messageTemplate, MaterializeArguments(argumentFactories));
+        }
+
+        /// <inheritdoc />
+        public void LogCritical(Exception exception, string messageTemplate, params object?[] arguments)
+        {
+            _inner.LogCritical(exception, messageTemplate, arguments);
+        }
+
+        private static object?[] MaterializeArguments(Func<object?>[] argumentFactories)
+        {
+            if (argumentFactories is null || argumentFactories.Length == 0)
+            {
+                return Array.Empty<object?>();
+            }
+
+            var result = new object?[argumentFactories.Length];
+
+            for (var i = 0; i < argumentFactories.Length; i++)
+            {
+                var factory = argumentFactories[i];
+                result[i] = factory != null ? factory() : null;
+            }
+
+            return result;
+        }
+    }
 }

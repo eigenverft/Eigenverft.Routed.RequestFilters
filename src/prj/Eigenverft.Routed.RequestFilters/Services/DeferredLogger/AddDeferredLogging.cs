@@ -14,11 +14,12 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
     public static partial class ServiceCollectionExtensions
     {
         /// <summary>
-        /// Adds the deferred logger wrapper to the service collection.
+        /// Adds the deferred logger wrapper(s) to the service collection.
         /// </summary>
         /// <remarks>
-        /// This method registers <see cref="IDeferredLogger{TCategoryName}"/> as a singleton
-        /// using <see cref="DeferredLogger{TCategoryName}"/> as the implementation type.
+        /// This method registers:
+        /// <see cref="IDeferredLogger{TCategoryName}"/> using <see cref="DeferredLogger{TCategoryName}"/>,
+        /// and <see cref="IDeferredLogger"/> using <see cref="DeferredLogger"/>.
         /// </remarks>
         /// <param name="services">The service collection to configure.</param>
         /// <returns>
@@ -41,6 +42,8 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
             }
 
             services.AddSingleton(typeof(IDeferredLogger<>), typeof(DeferredLogger<>));
+            services.AddSingleton<IDeferredLogger, DeferredLogger>();
+
             return services;
         }
     }

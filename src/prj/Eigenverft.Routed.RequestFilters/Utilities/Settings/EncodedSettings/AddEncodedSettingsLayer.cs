@@ -257,7 +257,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
         /// <code><![CDATA[
         /// var settingsPath = Path.Combine(defaultDirs["ApplicationSettings"], "helloworld.json");
         ///
-        /// builder.AddEncodedAppSettingsLayer(
+        /// builder.AddEncodedSettingsLayer(
         ///     commonJsonFilePath: settingsPath,
         ///     keyPathPattern: "*Passw*",
         ///     encode: SettingsValueEncoders.EncodeDpapiMachineBase64);
@@ -274,7 +274,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
         /// <param name="encodeEnvironmentFileIfPresent">When true, also encodes the environment override file if it exists.</param>
         /// <param name="enableEncodingStep">When true, performs the encoding step (mutates disk). Disable to load-only.</param>
         /// <returns>The same <see cref="ConfigurationManager"/> for chaining.</returns>
-        public static ConfigurationManager AddEncodedAppSettingsLayer(
+        public static ConfigurationManager AddEncodedSettingsLayer(
             this WebApplicationBuilder builder,
             string commonJsonFilePath,
             string keyPathPattern,

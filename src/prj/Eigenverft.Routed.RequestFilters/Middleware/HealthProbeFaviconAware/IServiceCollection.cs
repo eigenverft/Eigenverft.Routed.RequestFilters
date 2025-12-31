@@ -1,7 +1,10 @@
 ﻿using System;
 
+using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.HealthProbeFaviconAware
 {
@@ -25,6 +28,8 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HealthProbeFaviconAware
         public static IServiceCollection AddHealthProbeFaviconAware(this IServiceCollection services)
         {
             ArgumentNullException.ThrowIfNull(services);
+
+            AddInfrastructure(services);
 
             services.AddOptions<HealthProbeFaviconAwareOptions>().BindConfiguration(nameof(HealthProbeFaviconAwareOptions));
 
@@ -63,10 +68,22 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HealthProbeFaviconAware
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configuration);
 
+            AddInfrastructure(services);
+
             services.AddOptions<HealthProbeFaviconAwareOptions>().Bind(configuration.GetSection(nameof(HealthProbeFaviconAwareOptions)));
             if (manualConfigure != null) services.Configure(manualConfigure);
 
             return services;
+        }
+
+        /// <summary>
+        /// Adds shared registrations required by canonical redirect.
+        /// </summary>
+        /// <param name="services">The service collection.</param>
+        private static void AddInfrastructure(IServiceCollection services)
+        {
+            services.TryAddSingleton(typeof(IDeferredLogger<>), typeof(DeferredLogger<>));
+            services.AddOptions();
         }
     }
 }

@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
-namespace Eigenverft.Routed.RequestFilters.Middleware.CanonicalRedirect
+namespace Eigenverft.Routed.RequestFilters.Middleware.CanonicalHostRedirect
 {
     /// <summary>
     /// Determines how host canonicalization is applied.
@@ -25,13 +25,13 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.CanonicalRedirect
     }
 
     /// <summary>
-    /// Provides configuration options for <see cref="CanonicalRedirect"/>.
+    /// Provides configuration options for <see cref="CanonicalHostRedirect"/>.
     /// </summary>
     /// <remarks>
     /// This options type is designed to be bound from configuration, for example from a section named
-    /// <c>CanonicalRedirectOptions</c>. If the section is missing, property initializers act as defaults.
+    /// <c>CanonicalHostRedirectOptions</c>. If the section is missing, property initializers act as defaults.
     /// </remarks>
-    public sealed class CanonicalRedirectOptions
+    public sealed class CanonicalHostRedirectOptions
     {
         /// <summary>
         /// Gets or sets a value indicating whether the middleware is active.

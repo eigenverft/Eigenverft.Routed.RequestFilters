@@ -194,7 +194,7 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Diagnostic.LogConfiguration
 
                 foreach (var key in data.Keys)
                 {
-                    if (string.IsNullOrWhiteSpace(key))
+                    if (IsExcludedCollisionKey(key))
                     {
                         continue;
                     }
@@ -349,6 +349,40 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Diagnostic.LogConfiguration
             }
 
             return typeName;
+        }
+
+        /// <summary>
+        /// Keys that should be excluded from collision diagnostics (case-insensitive).
+        /// </summary>
+        private static readonly HashSet<string> CollisionKeyExclusions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "$schema",
+        };
+
+        /// <summary>
+        /// Determines whether a configuration key should be excluded from collision diagnostics.
+        /// </summary>
+        /// <param name="key">The configuration key.</param>
+        /// <returns>
+        /// <c>true</c> if the key should be excluded; otherwise <c>false</c>.
+        /// </returns>
+        private static bool IsExcludedCollisionKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return true;
+            }
+
+            // Configuration keys are hierarchical using ConfigurationPath.KeyDelimiter (typically ":").
+            // Exclude "$schema" both at root and when it appears as the last segment (e.g. "MySection:$schema").
+            var delimiter = ConfigurationPath.KeyDelimiter;
+            var lastDelimiter = key.LastIndexOf(delimiter, StringComparison.Ordinal);
+
+            var lastSegment = lastDelimiter < 0
+                ? key
+                : key[(lastDelimiter + delimiter.Length)..];
+
+            return CollisionKeyExclusions.Contains(lastSegment);
         }
     }
 }

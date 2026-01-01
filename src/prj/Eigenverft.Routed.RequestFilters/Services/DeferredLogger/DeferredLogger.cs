@@ -1,5 +1,6 @@
 ﻿using System;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
@@ -19,6 +20,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
         /// <exception cref="ArgumentNullException">
         /// Thrown if <paramref name="inner"/> is null.
         /// </exception>
+        [ActivatorUtilitiesConstructor]
         public DeferredLogger(ILogger<TCategoryName> inner)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
@@ -468,6 +470,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
         /// </summary>
         /// <param name="inner">The underlying logger.</param>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="inner"/> is null.</exception>
+        [ActivatorUtilitiesConstructor]
         public DeferredLogger(ILogger inner)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));

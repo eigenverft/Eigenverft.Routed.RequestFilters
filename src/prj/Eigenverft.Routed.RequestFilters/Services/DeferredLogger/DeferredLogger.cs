@@ -24,6 +24,16 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         }
 
+        /// <summary>
+        /// Initializes a new instance of the logger wrapper using <see cref="ILoggerFactory"/>.
+        /// </summary>
+        /// <param name="loggerFactory">Factory used to create the underlying logger.</param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="loggerFactory"/> is null.</exception>
+        public DeferredLogger(ILoggerFactory loggerFactory)
+            : this((loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger<TCategoryName>())
+        {
+        }
+
         /// <inheritdoc />
         public bool IsEnabled(LogLevel level)
         {
@@ -404,8 +414,9 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
     /// Default implementation of <see cref="IDeferredLogger"/> that wraps an <see cref="ILogger"/>.
     /// </summary>
     /// <remarks>
-    /// This implementation creates an <see cref="ILogger"/> via <see cref="ILoggerFactory"/>
-    /// using a fixed category name so consumers do not need to provide a category type.
+    /// This implementation can create an <see cref="ILogger"/> via <see cref="ILoggerFactory"/>
+    /// using either a fixed category name or an explicitly provided category name.
+    /// Consumers may also wrap an existing <see cref="ILogger"/> instance.
     /// </remarks>
     public sealed class DeferredLogger : IDeferredLogger
     {
@@ -426,13 +437,40 @@ namespace Eigenverft.Routed.RequestFilters.Services.DeferredLogger
         /// </code>
         /// </example>
         public DeferredLogger(ILoggerFactory loggerFactory)
+            : this(loggerFactory, DefaultCategoryName)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the logger wrapper using an explicit category name.
+        /// </summary>
+        /// <param name="loggerFactory">Factory used to create the underlying logger.</param>
+        /// <param name="categoryName">Category name used for the underlying logger.</param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="loggerFactory"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown if <paramref name="categoryName"/> is null or whitespace.</exception>
+        public DeferredLogger(ILoggerFactory loggerFactory, string categoryName)
         {
             if (loggerFactory is null)
             {
                 throw new ArgumentNullException(nameof(loggerFactory));
             }
 
-            _inner = loggerFactory.CreateLogger(DefaultCategoryName);
+            if (string.IsNullOrWhiteSpace(categoryName))
+            {
+                throw new ArgumentException("Category name must be non-empty.", nameof(categoryName));
+            }
+
+            _inner = loggerFactory.CreateLogger(categoryName);
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the logger wrapper by wrapping an existing logger.
+        /// </summary>
+        /// <param name="inner">The underlying logger.</param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="inner"/> is null.</exception>
+        public DeferredLogger(ILogger inner)
+        {
+            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         }
 
         /// <inheritdoc />

@@ -61,6 +61,14 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
 
+            BrowserBootstrapFilteringOptions options = _optionsMonitor.CurrentValue;
+
+            if (!options.Enabled)
+            {
+                await _next(context);
+                return;
+            }
+
             var req = context.Request;
 
             // Only meaningful for document-like navigations.
@@ -69,8 +77,6 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
                 await _next(context);
                 return;
             }
-
-            BrowserBootstrapFilteringOptions options = _optionsMonitor.CurrentValue;
 
             string path = req.Path.HasValue ? req.Path.Value! : string.Empty;
             string trace = context.TraceIdentifier;

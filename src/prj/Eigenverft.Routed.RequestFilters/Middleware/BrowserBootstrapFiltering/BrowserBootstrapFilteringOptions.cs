@@ -21,7 +21,8 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
     /// </para>
     /// <code>
     ///   "BrowserBootstrapFiltering": {
-    ///     "HtmlProtectedBootstrapScopePathPatterns": [
+    ///    "Enabled": true,
+    ///    "HtmlProtectedBootstrapScopePathPatterns": [
     ///         "/",
     ///         "/index.html"
     ///    ],
@@ -39,6 +40,16 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
     /// </remarks>
     public sealed class BrowserBootstrapFilteringOptions
     {
+        /// <summary>
+        /// Gets or sets a value indicating whether the middleware is enabled.
+        /// </summary>
+        /// <remarks>
+        /// When disabled, the middleware always passes the request through without evaluating scope patterns
+        /// or cookies. Because the middleware reads options via <see cref="Microsoft.Extensions.Options.IOptionsMonitor{TOptions}"/>,
+        /// this can be toggled at runtime if your configuration provider supports reload-on-change.
+        /// </remarks>
+        public bool Enabled { get; set; } = true;
+
         /// <summary>
         /// Gets or sets wildcard patterns that define which request paths are protected by the bootstrap check.
         /// </summary>

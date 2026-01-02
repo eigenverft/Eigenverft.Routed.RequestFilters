@@ -1,7 +1,6 @@
 ﻿using System;
 
 using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceCollectionExtensions;
 using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
 using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
 using Eigenverft.Routed.RequestFilters.Options;
@@ -28,7 +27,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
             ArgumentNullException.ThrowIfNull(app);
 
             app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(GenericExtensions.IServiceCollectionExtensions.IServiceCollectionExtensions.AddRequestSignatureFiltering)}().",
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestSignatureFiltering)}().",
                 typeof(IDeferredLogger<>));
 
             app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
@@ -48,7 +47,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
             app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(GenericExtensions.IServiceCollectionExtensions.IServiceCollectionExtensions.AddRequestSignatureFiltering)}().",
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestSignatureFiltering)}().",
                 typeof(IDeferredLogger<>));
 
             IOptionsMonitor<RequestSignatureFilteringOptions> innerOptionsMonitor =

@@ -14,6 +14,36 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
     /// <remarks>
     /// This options type is designed to be bound from configuration, for example from a section named
     /// <c>RequestSignatureFilteringOptions</c>. If the section is missing, property initializers act as defaults.
+    ///
+    /// <para>Example configuration (appsettings.json):</para>
+    /// <code>
+    /// "RequestSignatureFilteringOptions": {
+    ///   "Enabled": true,
+    ///   "RequestSignatureSchema": "Version1",
+    ///   "SignatureSanitizeTokens": [
+    ///     "*",
+    ///     "?",
+    ///     "#"
+    ///   ],
+    ///   "SignatureSanitizeReplacement": "_",
+    ///   "FilterPriority": "Blacklist",
+    ///   "Whitelist": [
+    ///     "*"
+    ///   ],
+    ///   "Blacklist": [
+    ///     "*HTTP.Method=POST*Content-Type*multipart/form-data*boundary*bissa*"
+    ///   ],
+    ///   "CaseSensitive": false,
+    ///   "BlockStatusCode": 400,
+    ///   "AllowBlacklistedRequests": true,
+    ///   "AllowUnmatchedRequests": true,
+    ///   "RecordBlacklistedRequests": true,
+    ///   "RecordUnmatchedRequests": true,
+    ///   "LogLevelWhitelist": "None",
+    ///   "LogLevelBlacklist": "Information",
+    ///   "LogLevelUnmatched": "Warning"
+    /// }
+    /// </code>
     /// </remarks>
     public sealed class RequestSignatureFilteringOptions
     {
@@ -48,17 +78,17 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
         /// When the value is <see cref="FilterPriority.Whitelist"/> the signature is treated as allowed.
         /// When the value is <see cref="FilterPriority.Blacklist"/> the signature is treated as forbidden.
         /// </remarks>
-        public FilterPriority FilterPriority { get; set; } = FilterPriority.Whitelist;
+        public FilterPriority FilterPriority { get; set; } = FilterPriority.Blacklist;
 
         /// <summary>
         /// Gets or sets the list of explicitly allowed signature patterns.
         /// </summary>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = Array.Empty<string>();
+        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[] { "*" };
 
         /// <summary>
         /// Gets or sets the list of explicitly forbidden signature patterns.
         /// </summary>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = Array.Empty<string>();
+        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[] { "*HTTP.Method=POST*Content-Type*multipart/form-data*boundary*bissa*" };
 
         /// <summary>
         /// Gets or sets a value indicating whether signature pattern matching is case sensitive.
@@ -92,12 +122,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
         /// <summary>
         /// Gets or sets a value indicating whether unmatched hits are recorded.
         /// </summary>
-        public bool RecordUnmatchedRequests { get; set; } = true;
+        public bool RecordUnmatchedRequests { get; set; } = false;
 
         /// <summary>
         /// Gets or sets the log level used when the request matches the whitelist.
         /// </summary>
-        public LogLevel LogLevelWhitelist { get; set; } = LogLevel.Debug;
+        public LogLevel LogLevelWhitelist { get; set; } = LogLevel.None;
 
         /// <summary>
         /// Gets or sets the log level used when the request matches the blacklist.

@@ -122,6 +122,73 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
         }
 
         /// <summary>
+        /// Do-it-all helper: encodes values at rest in the common appsettings JSON file and (if present) the environment override file,
+        /// then loads both files with decoding enabled.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Reviewer note: Call this once early. If you also keep the default appsettings loading stack, you may load the same
+        /// JSON files twice, which can confuse precedence.
+        /// </para>
+        /// </remarks>
+        /// <param name="configuration">The configuration manager to mutate and add providers to.</param>
+        /// <param name="commonJsonFilePath">Full path to the common appsettings file, for example <c>.../appsettings.json</c>.</param>
+        /// <param name="hostEnvironment">The host environment used to locate the environment override file.</param>
+        /// <param name="keyPathPattern">Glob patterns matched against full key paths (for example <c>*Passw*</c>).</param>
+        /// <param name="encode">Encoder function that produces the persisted encoded value.</param>
+        /// <param name="optionalCommon">When <see langword="true"/>, missing common file is allowed on load (encoding still requires it if enabled).</param>
+        /// <param name="optionalEnvironment">When <see langword="true"/>, missing environment override file is allowed.</param>
+        /// <param name="reloadOnChange">When <see langword="true"/>, JSON files are reloaded on change.</param>
+        /// <param name="nullAsEmpty">When <see langword="true"/>, JSON null is treated as empty string and encoded.</param>
+        /// <param name="encodeEnvironmentFileIfPresent">When <see langword="true"/>, also encodes the environment override file if it exists.</param>
+        /// <param name="enableEncodingStep">When <see langword="true"/>, performs the encoding step (mutates disk). Disable to load-only.</param>
+        /// <returns>The same <see cref="ConfigurationManager"/> for chaining.</returns>
+        public static ConfigurationManager AddEncodedSettingsLayer(
+            this ConfigurationManager configuration,
+            string commonJsonFilePath,
+            IHostEnvironment hostEnvironment,
+            string[] keyPathPattern,
+            Func<string, string> encode,
+            bool optionalCommon = false,
+            bool optionalEnvironment = true,
+            bool reloadOnChange = true,
+            bool nullAsEmpty = true,
+            bool encodeEnvironmentFileIfPresent = true,
+            bool enableEncodingStep = true)
+        {
+            EvfGuard.NotNull(configuration);
+            EvfGuard.NotNull(hostEnvironment);
+            EvfGuard.NotNullOrWhiteSpace(commonJsonFilePath);
+            EvfGuard.NotNull(keyPathPattern);
+            EvfGuard.NotNull(encode);
+
+            if (keyPathPattern.Length == 0 || keyPathPattern.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new ArgumentException("Value must contain at least one non-empty pattern.", nameof(keyPathPattern));
+            }
+
+            if (enableEncodingStep)
+            {
+                _ = configuration.EncodeJsonSettingsLayerValuesInPlace(
+                    commonJsonFilePath: commonJsonFilePath,
+                    hostEnvironment: hostEnvironment,
+                    keyPathPattern: keyPathPattern,
+                    encode: encode,
+                    nullAsEmpty: nullAsEmpty,
+                    encodeEnvironmentFileIfPresent: encodeEnvironmentFileIfPresent);
+            }
+
+            _ = ((IConfigurationBuilder)configuration).AddDecodedSettingsLayer(
+                commonJsonFilePath: commonJsonFilePath,
+                hostEnvironment: hostEnvironment,
+                optionalCommon: optionalCommon,
+                optionalEnvironment: optionalEnvironment,
+                reloadOnChange: reloadOnChange);
+
+            return configuration;
+        }
+
+        /// <summary>
         /// Encodes matching values in the common appsettings JSON file and (if present) the environment override file.
         /// </summary>
         /// <remarks>
@@ -151,6 +218,71 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
             EvfGuard.NotNullOrWhiteSpace(commonJsonFilePath);
             EvfGuard.NotNullOrWhiteSpace(keyPathPattern);
             EvfGuard.NotNull(encode);
+
+            if (!File.Exists(commonJsonFilePath))
+            {
+                throw new FileNotFoundException("Common appsettings file not found.", commonJsonFilePath);
+            }
+
+            var updated = 0;
+
+            updated += JsonSettingsFileEncoder.EncodeStringValues(
+                jsonFilePath: commonJsonFilePath,
+                keyPathPattern: keyPathPattern,
+                encode: encode,
+                nullAsEmpty: nullAsEmpty);
+
+            if (encodeEnvironmentFileIfPresent &&
+                JsonEnvironmentOverrideFileResolver.TryResolveEnvironmentOverride(
+                    commonJsonFilePath,
+                    hostEnvironment.EnvironmentName,
+                    out var environmentJsonPath))
+            {
+                updated += JsonSettingsFileEncoder.EncodeStringValues(
+                    jsonFilePath: environmentJsonPath,
+                    keyPathPattern: keyPathPattern,
+                    encode: encode,
+                    nullAsEmpty: nullAsEmpty);
+            }
+
+            return updated;
+        }
+
+        /// <summary>
+        /// Encodes matching values in the common appsettings JSON file and (if present) the environment override file.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Reviewer note: This mutates JSON files on disk. Ensure file ACLs and deployment process allow it.
+        /// </para>
+        /// </remarks>
+        /// <param name="configuration">Configuration manager used for convenience.</param>
+        /// <param name="commonJsonFilePath">Full path to the common appsettings file.</param>
+        /// <param name="hostEnvironment">Host environment used to locate the override file.</param>
+        /// <param name="keyPathPattern">Glob patterns matched against full key paths.</param>
+        /// <param name="encode">Encoder function.</param>
+        /// <param name="nullAsEmpty">Treat JSON null as empty string and encode it.</param>
+        /// <param name="encodeEnvironmentFileIfPresent">Also encodes environment override file if found.</param>
+        /// <returns>Total number of updated values across processed files.</returns>
+        public static int EncodeJsonSettingsLayerValuesInPlace(
+            this ConfigurationManager configuration,
+            string commonJsonFilePath,
+            IHostEnvironment hostEnvironment,
+            string[] keyPathPattern,
+            Func<string, string> encode,
+            bool nullAsEmpty = true,
+            bool encodeEnvironmentFileIfPresent = true)
+        {
+            EvfGuard.NotNull(configuration);
+            EvfGuard.NotNull(hostEnvironment);
+            EvfGuard.NotNullOrWhiteSpace(commonJsonFilePath);
+            EvfGuard.NotNull(keyPathPattern);
+            EvfGuard.NotNull(encode);
+
+            if (keyPathPattern.Length == 0 || keyPathPattern.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new ArgumentException("Value must contain at least one non-empty pattern.", nameof(keyPathPattern));
+            }
 
             if (!File.Exists(commonJsonFilePath))
             {
@@ -300,6 +432,53 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
                 encodeEnvironmentFileIfPresent: encodeEnvironmentFileIfPresent,
                 enableEncodingStep: enableEncodingStep);
         }
+
+        /// <summary>
+        /// Convenience overload for <see cref="WebApplicationBuilder"/> that applies the builder's environment automatically.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is a thin forwarder that calls <see cref="EncodedSettingsLayerExtensions.AddEncodedSettingsLayer"/>
+        /// with <paramref name="builder"/>.<see cref="WebApplicationBuilder.Environment"/> as the <see cref="IHostEnvironment"/>.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The web application builder.</param>
+        /// <param name="commonJsonFilePath">Full path to the common JSON settings file.</param>
+        /// <param name="keyPathPattern">Glob patterns matched against full key paths.</param>
+        /// <param name="encode">Encoder function that produces the persisted encoded value.</param>
+        /// <param name="optionalCommon">Whether the common file is optional.</param>
+        /// <param name="optionalEnvironment">Whether the environment override file is optional.</param>
+        /// <param name="reloadOnChange">Whether to reload JSON providers on file changes.</param>
+        /// <param name="nullAsEmpty">When true, JSON null is treated as empty string and encoded.</param>
+        /// <param name="encodeEnvironmentFileIfPresent">When true, also encodes the environment override file if it exists.</param>
+        /// <param name="enableEncodingStep">When true, performs the encoding step (mutates disk). Disable to load-only.</param>
+        /// <returns>The same <see cref="ConfigurationManager"/> for chaining.</returns>
+        public static ConfigurationManager AddEncodedSettingsLayer(
+            this WebApplicationBuilder builder,
+            string commonJsonFilePath,
+            string[] keyPathPattern,
+            Func<string, string> encode,
+            bool optionalCommon = false,
+            bool optionalEnvironment = true,
+            bool reloadOnChange = true,
+            bool nullAsEmpty = true,
+            bool encodeEnvironmentFileIfPresent = true,
+            bool enableEncodingStep = true)
+        {
+            EvfGuard.NotNull(builder);
+
+            return builder.Configuration.AddEncodedSettingsLayer(
+                commonJsonFilePath: commonJsonFilePath,
+                hostEnvironment: builder.Environment,
+                keyPathPattern: keyPathPattern,
+                encode: encode,
+                optionalCommon: optionalCommon,
+                optionalEnvironment: optionalEnvironment,
+                reloadOnChange: reloadOnChange,
+                nullAsEmpty: nullAsEmpty,
+                encodeEnvironmentFileIfPresent: encodeEnvironmentFileIfPresent,
+                enableEncodingStep: enableEncodingStep);
+        }
     }
 
     /// <summary>
@@ -421,6 +600,20 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
             EvfGuard.NotNullOrWhiteSpace(jsonFilePath);
             EvfGuard.NotNullOrWhiteSpace(keyPathPattern);
             EvfGuard.NotNull(encode);
+
+            return EncodeStringValues(jsonFilePath, new[] { keyPathPattern }, encode, nullAsEmpty);
+        }
+
+        public static int EncodeStringValues(string jsonFilePath, string[] keyPathPattern, Func<string, string> encode, bool nullAsEmpty = true)
+        {
+            EvfGuard.NotNullOrWhiteSpace(jsonFilePath);
+            EvfGuard.NotNull(keyPathPattern);
+            EvfGuard.NotNull(encode);
+
+            if (keyPathPattern.Length == 0 || keyPathPattern.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new ArgumentException("Value must contain at least one non-empty pattern.", nameof(keyPathPattern));
+            }
 
             if (!File.Exists(jsonFilePath))
             {
@@ -581,20 +774,51 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Settings.EncodedSettings
 
         private sealed class KeyPathGlobMatcher
         {
-            private readonly Regex _regex;
+            private readonly Regex[] _regexes;
 
             public KeyPathGlobMatcher(string globPattern)
             {
                 EvfGuard.NotNullOrWhiteSpace(globPattern);
+                _regexes = new[] { Compile(globPattern) };
+            }
 
-                var regex = "^" + Regex.Escape(globPattern).Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
-                _regex = new Regex(regex, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            public KeyPathGlobMatcher(IEnumerable<string> globPattern)
+            {
+                EvfGuard.NotNull(globPattern);
+
+                var patterns = globPattern
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => p.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                if (patterns.Length == 0)
+                {
+                    throw new ArgumentException("Value must contain at least one non-empty pattern.", nameof(globPattern));
+                }
+
+                _regexes = patterns.Select(Compile).ToArray();
             }
 
             public bool IsMatch(string keyPath)
             {
                 keyPath ??= string.Empty;
-                return _regex.IsMatch(keyPath);
+
+                for (var i = 0; i < _regexes.Length; i++)
+                {
+                    if (_regexes[i].IsMatch(keyPath))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            private static Regex Compile(string globPattern)
+            {
+                var regex = "^" + Regex.Escape(globPattern).Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
+                return new Regex(regex, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             }
         }
     }

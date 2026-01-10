@@ -213,7 +213,12 @@ namespace Eigenverft.Routed.RequestFilters.Utilities.Certificate
 
             X509Certificate2 created = CreateSelfSignedCertificate(subjectProfile, sanNames, validityPeriodYears, password, purpose, cryptoProfile);
 
-            if (!Directory.Exists(pfxDirectoryPath)) { Directory.CreateDirectory(pfxDirectoryPath); }
+            string? targetDir = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrWhiteSpace(targetDir))
+            {
+                throw new InvalidOperationException($"Could not determine directory for '{filePath}'.");
+            }
+            Directory.CreateDirectory(targetDir); // creates intermediate folders too
 
             byte[] pfxBytes = created.Export(X509ContentType.Pfx, password);
             File.WriteAllBytes(filePath, pfxBytes);

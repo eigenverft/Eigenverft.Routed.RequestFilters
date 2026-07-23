@@ -10,7 +10,7 @@ dotnet add package Eigenverft.Routed.RequestFilters
 
 ## Target frameworks
 
-The package provides assets for .NET 6, 7, 8, 9, and 10 and uses the ASP.NET Core shared framework.
+The package provides assets for .NET 6, 7, 8, and 10 and uses the ASP.NET Core shared framework.
 
 ## Included areas
 

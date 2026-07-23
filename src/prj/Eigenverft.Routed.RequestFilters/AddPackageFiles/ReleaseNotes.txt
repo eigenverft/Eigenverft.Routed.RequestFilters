@@ -13,7 +13,7 @@ Highlights
   redirects, protocol checks, host checks, and related request controls.
 - Supporting services and utilities for filtering evaluation, event storage,
   deferred logging, configuration, certificates, and application hosting.
-- Multi-targeted package support for .NET 6, 7, 8, 9, and 10.
+- Multi-targeted package support for .NET 6, 7, 8, and 10.
 - Updated SQLite dependencies to avoid the known vulnerable native package.
 - Package metadata, embedded README, icon, and MIT license declaration.
 

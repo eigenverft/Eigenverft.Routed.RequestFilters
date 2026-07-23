@@ -5,17 +5,30 @@ Composable request filtering, traffic control, diagnostics, and hosting utilitie
 > [!IMPORTANT]
 > This project is currently **pre-1.0**. Public APIs, option names, defaults, and configuration behavior may change between preview releases.
 
-## Overview
+## At a glance
 
-`Eigenverft.Routed.RequestFilters` provides small, independently configurable ASP.NET Core middleware components. Applications can combine only the filters and supporting services they need instead of adopting one monolithic request-processing pipeline.
+| | |
+| --- | --- |
+| Package | `Eigenverft.Routed.RequestFilters` |
+| Application model | ASP.NET Core middleware and dependency-injection extensions |
+| Target frameworks | .NET 6, .NET 7, .NET 8, and .NET 10 |
+| Configuration | `IOptionsMonitor<T>`, `IConfiguration`, or code-based delegates |
+| Event storage | Null, bounded in-memory, or SQLite |
+| License | MIT |
 
-The package includes:
+The library is designed for applications that want to compose focused request policies instead of adopting one monolithic request-processing pipeline. Each component is registered explicitly and added to the pipeline explicitly.
 
-- request classification by host name, URL, URI segment, path depth, file extension, HTTP method, HTTP protocol, TLS protocol, language, user agent, remote IP address, CIDR range, and request signature;
-- request logging, delay throttling, rate smoothing, canonical-host redirects, browser-bootstrap checks, and favicon-aware health probes;
-- whitelist, blacklist, unmatched-request, logging, recording, and block-response controls;
-- filtering-event evaluation with null, in-memory, and SQLite-backed storage options;
-- supporting helpers for Kestrel SNI, HTTPS redirection, static files, warm-up requests, encoded settings, certificates, and application directory layouts.
+## Contents
+
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [How filtering works](#how-filtering-works)
+- [Common recipes](#common-recipes)
+- [Middleware catalog](#middleware-catalog)
+- [Evaluation and event storage](#evaluation-and-event-storage)
+- [Pipeline ordering](#pipeline-ordering)
+- [Build from source](#build-from-source)
+- [Security notes](#security-notes)
 
 ## Installation
 
@@ -23,39 +36,44 @@ The package includes:
 dotnet add package Eigenverft.Routed.RequestFilters
 ```
 
-The NuGet package contains assets for:
+The package provides assets for:
 
-- .NET 6
-- .NET 7
-- .NET 8
-- .NET 10
+- `net6.0`
+- `net7.0`
+- `net8.0`
+- `net10.0`
 
 It uses the ASP.NET Core shared framework.
 
 ## Quick start
 
-Register each component with `Add...` before building the application, then place its corresponding `Use...` middleware in the request pipeline.
+Every middleware follows the same basic pattern:
+
+1. Register it with `Add...`.
+2. Configure its matching and enforcement policy.
+3. Add it to the request pipeline with `Use...`.
+
+The following example allows only the configured host names.
+
+### `Program.cs`
 
 ```csharp
 using Eigenverft.Routed.RequestFilters.Middleware.HostNameFiltering;
-using Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHostNameFiltering();
-builder.Services.AddUserAgentFiltering();
 
 var app = builder.Build();
 
 app.UseHostNameFiltering();
-app.UseUserAgentFiltering();
 
 app.MapGet("/", () => Results.Ok(new { status = "ready" }));
 
 app.Run();
 ```
 
-The parameterless registrations bind configuration from sections named after their option types. For example, host-name filtering reads `HostNameFilteringOptions`.
+### `appsettings.json`
 
 ```json
 {
@@ -67,135 +85,263 @@ The parameterless registrations bind configuration from sections named after the
     "Blacklist": [],
     "AllowBlacklistedRequests": false,
     "AllowUnmatchedRequests": false,
-    "BlockStatusCode": 400
+    "BlockStatusCode": 403
   }
 }
 ```
 
-This example permits the listed host patterns and rejects unmatched hosts. Registration alone should not be treated as an implicit deny policy; configure the allow/block flags explicitly for your application.
+The parameterless `AddHostNameFiltering()` registration binds the section named `HostNameFilteringOptions`. The example allows requests matching the whitelist and rejects unmatched or blacklisted hosts.
 
-### Pattern syntax
+> [!CAUTION]
+> Registration alone is not an implicit deny policy. Many filters are intentionally observable by default. Set the relevant `Allow...` flags explicitly before relying on a filter for enforcement.
 
-String-based filters use simple wildcard patterns:
+## How filtering works
 
-| Token | Meaning |
+Most filtering middleware classifies an observed request value as one of three results:
+
+| Result | Meaning |
 | --- | --- |
-| `*` | zero or more characters |
-| `?` | zero or one character |
-| `#` | exactly one character |
+| Whitelist | The value matched an allowed pattern. |
+| Blacklist | The value matched a blocked pattern. |
+| Unmatched | The value matched neither list. |
 
-Matching is anchored to the complete value. For example, `*.example.com` matches `api.example.com`, while `api.example.com` matches only that full host name.
+The corresponding options then determine whether the request is allowed, recorded, logged, or short-circuited with `BlockStatusCode`. When a value appears in both lists, `FilterPriority` controls which result wins.
 
-## Configuration model
+Option names differ slightly between components, but the recurring controls are:
 
-Most middleware components expose three service-registration forms:
+- `Whitelist` and `Blacklist`
+- `FilterPriority`
+- `AllowBlacklistedRequests`
+- `AllowUnmatchedRequests`
+- `RecordBlacklistedRequests`
+- `RecordUnmatchedRequests`
+- per-result log levels
+- `BlockStatusCode`
+
+### Configuration forms
+
+Most middleware components expose these registration forms:
 
 ```csharp
+// Bind the conventional XOptions configuration section.
 builder.Services.AddHostNameFiltering();
 
+// Bind configuration, then apply code-based overrides.
 builder.Services.AddHostNameFiltering(options =>
 {
     options.Whitelist = new[] { "api.example.com" };
     options.AllowUnmatchedRequests = false;
 });
 
+// Bind from an explicitly supplied configuration root, then override values.
 builder.Services.AddHostNameFiltering(
     builder.Configuration,
     options => options.BlockStatusCode = StatusCodes.Status403Forbidden);
 ```
 
-The conventions are:
+Several middleware components also provide `UseX(Action<XOptions>)`. That overload adds a pipeline-local configuration layer on top of the DI-registered options.
 
-- `AddX()` binds section `XOptions` and uses property initializers as defaults.
-- `AddX(Action<XOptions>)` binds configuration and then applies code-based overrides.
-- `AddX(IConfiguration, Action<XOptions>?)` binds from an explicitly supplied configuration root.
-- Several `UseX(Action<XOptions>)` overloads can apply an additional pipeline-local configuration layer.
-- Configuration-bound middleware uses options monitoring, so reloadable configuration sources can update values without rebuilding the pipeline.
+Configuration-bound middleware uses options monitoring. Reloadable configuration sources can therefore update values without rebuilding the middleware pipeline.
 
-Filtering components commonly classify a request as **whitelisted**, **blacklisted**, or **unmatched**. Their options then control whether each result is allowed, recorded, logged, or immediately blocked.
+### Pattern syntax
+
+String-based filters use anchored wildcard patterns rather than raw regular expressions:
+
+| Token | Meaning |
+| --- | --- |
+| `*` | Zero or more characters |
+| `?` | Zero or one character |
+| `#` | Exactly one character |
+
+Examples:
+
+| Pattern | Example match |
+| --- | --- |
+| `*.example.com` | `api.example.com` |
+| `api-##.example.com` | `api-01.example.com` |
+| `/v?/health` | `/v1/health` and `/v/health` |
+
+Matching is anchored to the complete observed value. Matching is case-insensitive by default where the corresponding options expose a case-sensitivity switch.
+
+## Common recipes
+
+### Configure a filter entirely in code
+
+```csharp
+using Eigenverft.Routed.RequestFilters.Middleware.HttpMethodFiltering;
+
+builder.Services.AddHttpMethodFiltering(options =>
+{
+    options.Whitelist = new[] { "GET", "HEAD" };
+    options.AllowBlacklistedRequests = false;
+    options.AllowUnmatchedRequests = false;
+    options.BlockStatusCode = StatusCodes.Status405MethodNotAllowed;
+});
+```
+
+Add the matching middleware before the endpoints it protects:
+
+```csharp
+app.UseHttpMethodFiltering();
+app.MapControllers();
+```
+
+### Filter client IP addresses behind a reverse proxy
+
+Configure trusted forwarded headers before remote-IP or CIDR filters. The host application remains responsible for defining trusted proxies and networks.
+
+```csharp
+app.UseForwardedHeaders();
+app.UseRemoteIpAddressFiltering();
+app.UseCidrFiltering();
+```
+
+Never accept arbitrary forwarded headers from untrusted networks. Incorrect proxy trust configuration can make client-IP policies ineffective.
+
+### Record filter events and evaluate them later
+
+```csharp
+using Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate;
+using Eigenverft.Routed.RequestFilters.Middleware.HostNameFiltering;
+using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators;
+using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage;
+
+builder.Services.AddFilteringEventStorage<InMemoryStorage>();
+builder.Services.AddFilteringEvaluator(FilteringEvaluatorKind.SimpleFilteringScore);
+builder.Services.AddHostNameFiltering();
+builder.Services.AddFilteringEvaluationGate();
+
+var app = builder.Build();
+
+app.UseHostNameFiltering();
+app.UseFilteringEvaluationGate();
+```
+
+Use `NullStorage` when events should be discarded, `InMemoryStorage` for process-local bounded storage, or `SqliteStorage` when events must survive process restarts. Evaluator and storage selection use a **last-call-wins** model.
 
 ## Middleware catalog
 
-| Component | Service registration | Pipeline registration | Purpose |
+### Request classification and filtering
+
+| Component | Registration | Pipeline | Observed value |
 | --- | --- | --- | --- |
-| Accept language filtering | `AddAcceptLanguageFiltering` | `UseAcceptLanguageFiltering` | Classify requests by `Accept-Language`. |
+| Accept language | `AddAcceptLanguageFiltering` | `UseAcceptLanguageFiltering` | `Accept-Language` header |
+| CIDR | `AddCidrFiltering` | `UseCidrFiltering` | Remote address and CIDR networks |
+| File extension | `AddFileExtensionBlocking` | `UseFileExtensionBlocking` | Requested file extension |
+| Host name | `AddHostNameFiltering` | `UseHostNameFiltering` | Request host name |
+| HTTP method | `AddHttpMethodFiltering` | `UseHttpMethodFiltering` | `GET`, `POST`, and other methods |
+| HTTP protocol | `AddHttpProtocolFiltering` | `UseHttpProtocolFiltering` | HTTP protocol/version |
+| Path depth | `AddPathDepthFiltering` | `UsePathDepthFiltering` | Number of path segments |
+| Remote IP | `AddRemoteIpAddressFiltering` | `UseRemoteIpAddressFiltering` | Individual remote IP address |
+| Request signature | `AddRequestSignatureFiltering` | `UseRequestSignatureFiltering` | Composite request signature |
+| Request URL | `AddRequestUrlFiltering` | `UseRequestUrlFiltering` | Complete request URL |
+| TLS protocol | `AddTlsProtocolFiltering` | `UseTlsProtocolFiltering` | Negotiated TLS protocol |
+| URI segment | `AddUriSegmentFiltering` | `UseUriSegmentFiltering` | Individual path segments |
+| User agent | `AddUserAgentFiltering` | `UseUserAgentFiltering` | `User-Agent` header |
+
+### Traffic control and operational middleware
+
+| Component | Registration | Pipeline | Purpose |
+| --- | --- | --- | --- |
 | Browser bootstrap filtering | `AddBrowserBootstrapFiltering` | `UseBrowserBootstrapFiltering` | Detect and control browser bootstrap requests. |
-| Canonical host redirect | `AddCanonicalHostRedirect` | `UseCanonicalHostRedirect` | Redirect requests to a configured canonical host. |
-| CIDR filtering | `AddCidrFiltering` | `UseCidrFiltering` | Match remote addresses against CIDR networks. |
-| Development unlocker | `AddDevelopmentUnlocker` | `UseDevelopmentUnlocker` | Provide explicitly configured development unlock behavior. |
-| File-extension blocking | `AddFileExtensionBlocking` | `UseFileExtensionBlocking` | Block or record requests by file extension. |
-| Filtering evaluation gate | `AddFilteringEvaluationGate` | `UseFilteringEvaluationGate` | Enforce the decision produced by a filtering evaluator. |
+| Canonical host redirect | `AddCanonicalHostRedirect` | `UseCanonicalHostRedirect` | Redirect requests to a canonical host. |
+| Development unlocker | `AddDevelopmentUnlocker` | `UseDevelopmentUnlocker` | Apply explicitly configured development unlock behavior. |
+| Evaluation gate | `AddFilteringEvaluationGate` | `UseFilteringEvaluationGate` | Enforce a filtering evaluator decision. |
 | Favicon-aware health probe | `AddHealthProbeFaviconAware` | `UseHealthProbeFaviconAware` | Handle health probes while accounting for favicon requests. |
-| Host-name filtering | `AddHostNameFiltering` | `UseHostNameFiltering` | Filter by the request host name. |
-| HTTP method filtering | `AddHttpMethodFiltering` | `UseHttpMethodFiltering` | Filter `GET`, `POST`, and other HTTP methods. |
-| HTTP protocol filtering | `AddHttpProtocolFiltering` | `UseHttpProtocolFiltering` | Filter by HTTP protocol/version. |
-| Path-depth filtering | `AddPathDepthFiltering` | `UsePathDepthFiltering` | Limit or classify request path depth. |
-| Remote-IP filtering | `AddRemoteIpAddressFiltering` | `UseRemoteIpAddressFiltering` | Filter individual remote IP addresses. |
-| Request delay throttling | `AddRequestDelayThrottling` | `UseRequestDelayThrottling` | Add configurable delay-based throttling. |
+| Request delay throttling | `AddRequestDelayThrottling` | `UseRequestDelayThrottling` | Introduce configurable delay-based throttling. |
 | Request logging | `AddRequestLogging` | `UseRequestLogging` | Produce structured request logs. |
 | Request rate smoothing | `AddRequestRateSmoothing` | `UseRequestRateSmoothing` | Smooth request bursts over time. |
-| Request-signature filtering | `AddRequestSignatureFiltering` | `UseRequestSignatureFiltering` | Build and filter a signature from request properties. |
-| Request-URL filtering | `AddRequestUrlFiltering` | `UseRequestUrlFiltering` | Filter the complete request URL. |
-| TLS protocol filtering | `AddTlsProtocolFiltering` | `UseTlsProtocolFiltering` | Filter by the negotiated TLS protocol. |
-| URI-segment filtering | `AddUriSegmentFiltering` | `UseUriSegmentFiltering` | Inspect individual URI path segments. |
-| User-agent filtering | `AddUserAgentFiltering` | `UseUserAgentFiltering` | Filter by the `User-Agent` header. |
 
-Each component has its own namespace below:
+Each component has a dedicated namespace below:
 
 ```text
 Eigenverft.Routed.RequestFilters.Middleware.<ComponentName>
 ```
 
-This keeps imports and registrations explicit.
+This keeps imports and registrations explicit and lets consumers include only the components they use.
 
 ## Evaluation and event storage
 
-Individual filters can emit filtering events. The package includes evaluator and storage abstractions that allow applications to aggregate those events and make a later allow/block decision.
+Individual filters can emit `FilteringEvent` records. An evaluator can aggregate the events associated with an observed remote address and produce an allow/block decision for `FilteringEvaluationGate`.
 
-Available evaluator strategies include:
+### Evaluators
 
-- null evaluation;
-- simple score evaluation;
-- source- and match-kind-weighted evaluation.
+| Kind | Behavior |
+| --- | --- |
+| `NullFiltering` | Always uses the no-op evaluator. |
+| `SimpleFilteringScore` | Evaluates the accumulated filter score. |
+| `SourceAndMatchKindWeighted` | Applies configurable weights by event source and match kind. |
 
-Available event-storage implementations include:
+Register exactly one active evaluator:
 
-- null storage;
-- bounded in-memory storage;
-- SQLite-backed storage.
+```csharp
+builder.Services.AddFilteringEvaluator(
+    FilteringEvaluatorKind.SourceAndMatchKindWeighted);
+```
 
-`FilteringEvaluationGate` consumes the selected evaluator and can either block the request or run in an allow-through/log-only mode. This is useful when introducing a policy gradually before enforcement.
+### Event storage
+
+| Selection | Behavior |
+| --- | --- |
+| `NullStorage` | Discards events. |
+| `InMemoryStorage` | Keeps a bounded process-local event history. |
+| `SqliteStorage` | Persists events in SQLite. |
+
+Register exactly one active storage:
+
+```csharp
+builder.Services.AddFilteringEventStorage<SqliteStorage>();
+```
+
+Configurable backends bind their conventional sections:
+
+- `InMemoryFilteringEventStorageOptions`
+- `InSqliteDbFilteringEventStorageOptions`
+- `SourceAndMatchKindWeightedFilteringEvaluatorOptions`
+
+`FilteringEvaluationGate` can enforce the evaluator result or run in allow-through mode. Allow-through mode is useful for observing a new policy before enabling blocking.
 
 ## Pipeline ordering
 
-Middleware order is part of the security policy. A typical application should consider the following sequence:
+Middleware order is part of the policy. A typical application should consider this sequence:
 
-1. Configure trusted forwarded headers when the app runs behind a reverse proxy.
-2. Apply canonical redirects or connection-context middleware.
-3. Apply inexpensive request filters before expensive application work.
-4. Apply request logging at the point that matches the desired logging scope.
-5. Apply the evaluation gate after the data it depends on is available.
-6. Map endpoints last.
+1. Configure trusted forwarded headers when running behind a reverse proxy.
+2. Apply canonical redirects and connection-context middleware.
+3. Apply inexpensive request classifiers and filters.
+4. Apply request logging at the point matching the desired logging scope.
+5. Apply `FilteringEvaluationGate` after the filters whose events it evaluates.
+6. Map endpoints and static resources last.
 
-When using remote-IP or CIDR filtering behind a proxy, configure ASP.NET Core forwarded-header trust correctly before the filters. Never trust arbitrary forwarded headers from untrusted networks.
+A minimal composed pipeline might look like this:
 
-The package inserts its remote-IP context middleware once when required by dependent components, but application-level proxy configuration remains the host application's responsibility.
+```csharp
+app.UseForwardedHeaders();
+app.UseCanonicalHostRedirect();
+app.UseHostNameFiltering();
+app.UseUserAgentFiltering();
+app.UseRequestLogging();
+app.UseFilteringEvaluationGate();
+
+app.MapControllers();
+```
+
+Only include middleware that has been registered and configured for the application. The package inserts its remote-IP context middleware once when required by dependent components, but proxy trust remains the host application's responsibility.
 
 ## Supporting utilities
 
-The package also contains reusable infrastructure outside the core filters:
+The package also contains optional infrastructure outside the core filters:
 
-- Kestrel SNI configuration and certificate selection;
-- permanent HTTPS-redirection registration;
-- PWA and Blazor static-file content-type mappings;
-- dynamic non-asset file serving;
-- application warm-up requests;
-- deferred logging and Microsoft logging adapters;
-- encoded/decoded JSON configuration layers;
-- JSON settings write-back storage;
-- certificate and application-directory helpers.
+- Kestrel SNI configuration and certificate selection
+- permanent HTTPS-redirection registration
+- PWA and Blazor static-file content-type mappings
+- dynamic non-asset file serving
+- application warm-up requests
+- deferred logging and Microsoft logging adapters
+- encoded and decoded JSON configuration layers
+- JSON settings write-back storage
+- certificate and application-directory helpers
 
-These utilities are optional. Consumers can use the request filters without adopting the hosting helpers.
+Consumers can use the filtering middleware without adopting these hosting utilities.
 
 ## Build from source
 
@@ -207,13 +353,10 @@ dotnet restore src/Eigenverft.Routed.RequestFilters.slnx
 dotnet build src/Eigenverft.Routed.RequestFilters.slnx -c Release --no-restore
 ```
 
-Create a local package with the repository's pack metadata enabled:
+Create a local NuGet package with repository pack metadata enabled:
 
 ```shell
-dotnet pack \
-  src/prj/Eigenverft.Routed.RequestFilters/Eigenverft.Routed.RequestFilters.csproj \
-  -c Release \
-  -p:Stage=pack
+dotnet pack src/prj/Eigenverft.Routed.RequestFilters/Eigenverft.Routed.RequestFilters.csproj -c Release -p:Stage=pack
 ```
 
 Main source layout:
@@ -237,15 +380,17 @@ This library provides application middleware, not a complete web application fir
 
 In particular:
 
-- start new enforcement policies in an observable allow-through mode where practical;
-- verify trusted proxies before relying on client IP information;
-- avoid exposing development unlock behavior in production;
-- keep middleware before the endpoints or resources it is intended to protect;
+- configure enforcement flags explicitly;
+- verify trusted proxies before relying on client-IP information;
+- place filters before the endpoints or resources they protect;
+- start new evaluator policies in allow-through mode where practical;
+- do not expose development unlock behavior in production;
+- avoid logging secrets, credentials, or sensitive request data;
 - treat preview upgrades as potentially breaking until the project reaches 1.0.
 
 ## Project status
 
-The first public releases are preview packages produced by the repository's CI/CD workflow. Source, releases, and issue tracking are available in the [GitHub repository](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters).
+Preview packages are produced by the repository's CI/CD workflow. Source, releases, and issue tracking are available in the [GitHub repository](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters).
 
 ## License
 

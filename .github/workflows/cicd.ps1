@@ -26,16 +26,17 @@ Write-Host "Powershell script $(Split-Path -Leaf $PSCommandPath) has started."
 # Designed to short-circuit local and CI/CD workflows when dependencies are offline (e.g., skip a push if the Git host is unreachable).
 . "$PSScriptRoot\cicd.bootstrap.ps1"
 
-$RemoteResourcesAvailable = Test-RemoteResourcesAvailable -Quiet
+$PowerShellGalleryAvailable = Test-PSGalleryConnectivity
+$null = Test-GitHubConnectivity
 
-# Ensure connectivity to PowerShell Gallery before attempting module installation, if not assuming being offline, installation is present check existance with Test-ModuleAvailable
-if ($RemoteResourcesAvailable)
+# Module installation depends on PSGallery only; GitHub connectivity is diagnostic here.
+if ($PowerShellGalleryAvailable)
 {
     Update-ModuleIfNeeded2 -ModuleName 'Eigenverft.Manifested.Drydock'
-    #Install-Module -Name 'Eigenverft.Manifested.Drydock' -Repository "PSGallery" -Scope CurrentUser -Force -AllowClobber -AllowPrerelease -ErrorAction Stop
-    # Install the required modules to run this script, Eigenverft.Manifested.Drydock needs to be Powershell 5.1 and Powershell 7+ compatible
 }
 
+# A freshly installed module is not guaranteed to auto-load in the same process.
+Import-Module -Name 'Eigenverft.Manifested.Drydock' -Force -ErrorAction Stop
 $null = Test-ModuleAvailable -Name 'Eigenverft.Manifested.Drydock' -IncludePrerelease -ExitIfNotFound -Quiet
 
 # Required for updating PowerShellGet and PackageManagement providers in local PowerShell 5.x environments

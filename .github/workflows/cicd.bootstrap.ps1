@@ -133,8 +133,8 @@ function Test-GitHubConnectivity {
                 if ($resp -and $resp -is [System.Net.HttpWebResponse]) {
                     $status = [int]$resp.StatusCode
                     $resp.Close()
-                    if ($status -eq 405 -and $Method -eq 'HEAD') {
-                        # Signal fallback to GET
+                    if ($status -in @(404, 405) -and $Method -eq 'HEAD') {
+                        # GitHub can reject HEAD for this endpoint; retry with GET.
                         return $null
                     }
                     Write-ConsoleLog -Level WRN -Message "Error: GitHub $Method failed (HTTP $status): $($wex.Message)"

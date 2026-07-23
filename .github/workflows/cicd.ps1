@@ -107,6 +107,7 @@ $SPDXCachePath = Get-Path -Paths @("$ConfigRootPath","SPDX_cache")
 $DotNetToolsManifestPath = Get-Path -Paths @("$ConfigRootPath","dotnet-tools","dotnet-tools.json")
 $NuGetAllowedLicensesPath = Get-Path -Paths @("$ConfigRootPath","nuget-license","allowed-licenses.json")
 $NuGetLicenseMappingsPath = Get-Path -Paths @("$ConfigRootPath","nuget-license","licenses-mapping.json")
+$NuGetLicenseFileMappingsPath = Get-Path -Paths @("$ConfigRootPath","nuget-license","license-file-mappings.json")
 $DocFxTemplatePath = Get-Path -Paths @("$ConfigRootPath","docfx","build","docfx_local.template.json")
 $IndexTemplatePath = Get-Path -Paths @("$ConfigRootPath","docfx","build","index.template.md")
 
@@ -292,7 +293,7 @@ foreach ($SolutionProjectPath in $SolutionProjectPaths) {
             Join-FileText -InputFiles @("$ReportsDirectory\BillOfMaterials.txt", "$ReportsDirectory\Vulnerabilities.txt","$ReportsDirectory\Deprecated.txt") -OutputFile "$ReportsDirectory\SBOM-$(($ProjectFileInfo.BaseName).Replace('.','_'))" -BetweenFiles 'One'
 
             $NuGetLicenseReportPath = "$ReportsDirectory/$($ProjectFileInfo.BaseName).ThirdPartyLicencesNotices.json"
-            Invoke-ProcessTyped -Executable "nuget-license" -Arguments @("--input", "$($ProjectFileInfo.FullName)", "--allowed-license-types", "$NuGetAllowedLicensesPath", "--output", "JsonPretty", "--licenseurl-to-license-mappings" ,"$NuGetLicenseMappingsPath", "--file-output", "$NuGetLicenseReportPath" ) -AllowedExitCodes @(0,1)
+            Invoke-ProcessTyped -Executable "nuget-license" -Arguments @("--input", "$($ProjectFileInfo.FullName)", "--allowed-license-types", "$NuGetAllowedLicensesPath", "--output", "JsonPretty", "--licenseurl-to-license-mappings", "$NuGetLicenseMappingsPath", "--licensefile-to-license-mappings", "$NuGetLicenseFileMappingsPath", "--file-output", "$NuGetLicenseReportPath" ) -AllowedExitCodes @(0,1)
             $NuGetLicenseExitCode = $LASTEXITCODE
             if ($NuGetLicenseExitCode -ne 0)
             {

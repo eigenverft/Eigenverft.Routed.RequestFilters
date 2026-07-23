@@ -291,8 +291,19 @@ foreach ($SolutionProjectPath in $SolutionProjectPaths) {
         
             Join-FileText -InputFiles @("$ReportsDirectory\BillOfMaterials.txt", "$ReportsDirectory\Vulnerabilities.txt","$ReportsDirectory\Deprecated.txt") -OutputFile "$ReportsDirectory\SBOM-$(($ProjectFileInfo.BaseName).Replace('.','_'))" -BetweenFiles 'One'
 
-            Invoke-ProcessTyped -Executable "nuget-license" -Arguments @("--input", "$($ProjectFileInfo.FullName)", "--allowed-license-types", "$NuGetAllowedLicensesPath", "--output", "JsonPretty", "--licenseurl-to-license-mappings" ,"$NuGetLicenseMappingsPath", "--file-output", "$ReportsDirectory/$($ProjectFileInfo.BaseName).ThirdPartyLicencesNotices.json" )
-            New-ThirdPartyNotice -LicenseJsonPath "$ReportsDirectory/$($ProjectFileInfo.BaseName).ThirdPartyLicencesNotices.json" -OutputPath "$ReportsDirectory\$($ProjectFileInfo.BaseName).ThirdPartyLicencesNotices.txt" -Name "$($ProjectFileInfo.BaseName)"
+            $NuGetLicenseReportPath = "$ReportsDirectory/$($ProjectFileInfo.BaseName).ThirdPartyLicencesNotices.json"
+            Invoke-ProcessTyped -Executable "nuget-license" -Arguments @("--input", "$($ProjectFileInfo.FullName)", "--allowed-license-types", "$NuGetAllowedLicensesPath", "--output", "JsonPretty", "--licenseurl-to-license-mappings" ,"$NuGetLicenseMappingsPath", "--file-output", "$NuGetLicenseReportPath" ) -AllowedExitCodes @(0,1)
+            $NuGetLicenseExitCode = $LASTEXITCODE
+            if ($NuGetLicenseExitCode -ne 0)
+            {
+                if (Test-Path -LiteralPath $NuGetLicenseReportPath -PathType Leaf)
+                {
+                    Write-Host "nuget-license validation report:"
+                    Get-Content -LiteralPath $NuGetLicenseReportPath -Raw | Write-Host
+                }
+                throw "nuget-license found disallowed or unresolved package licenses (exit code $NuGetLicenseExitCode)."
+            }
+            New-ThirdPartyNotice -LicenseJsonPath "$NuGetLicenseReportPath" -OutputPath "$ReportsDirectory\$($ProjectFileInfo.BaseName).ThirdPartyLicencesNotices.txt" -Name "$($ProjectFileInfo.BaseName)"
 
             Export-PackageLicenseTexts -JsonPath "$ReportsDirectory/$($ProjectFileInfo.BaseName).ThirdPartyLicencesNotices.json" -OutputDirectory "$ReportsDirectory" -CacheDirectory "$SPDXCachePath"
         }

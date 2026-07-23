@@ -71,4 +71,4 @@ workflows/** linguist-vendored
 workflows/psutility/** linguist-vendored
 
 # Preserve canonical upstream license bytes used for content matching
-.github/workflows/.config/nuget-license/licenses/SQLitePCLRaw.Apache-2.0.txt text eol=lf
+.github/workflows/.config/nuget-license/licenses/SQLitePCLRaw.SQLite-Public-Domain.txt text eol=lf

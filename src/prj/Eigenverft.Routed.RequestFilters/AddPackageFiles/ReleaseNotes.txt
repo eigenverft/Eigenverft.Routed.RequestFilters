@@ -1,22 +1,22 @@
-﻿Release Notes – 0.1.* (2025-12-14)
+Release Notes – 0.1.* (2026-07-23)
 ===================================
 
-Status: Early Development Phase
---------------------------------
-This release continues the foundational development of the software. 
-As progress towards version 1.0, the focus remains on refining core 
-functionalities, improving stability, and integrating key features. 
-Users should expect frequent updates, iterative refinements, and 
-potential changes as the project matures.
+Status: First Public Preview Release
+------------------------------------
+This is the first public NuGet release of Eigenverft.Routed.RequestFilters.
+The package remains pre-1.0, so APIs and configuration may change as the
+library evolves.
 
-What's New & Improved?
-----------------------
-- Active core development with ongoing refinements.
-- Initial groundwork for future stable releases.
+Highlights
+----------
+- ASP.NET Core middleware for request filtering, throttling, logging,
+  redirects, protocol checks, host checks, and related request controls.
+- Supporting services and utilities for filtering evaluation, event storage,
+  deferred logging, configuration, certificates, and application hosting.
+- Multi-targeted package support for .NET 6, 7, 8, 9, and 10.
+- Updated SQLite dependencies to avoid the known vulnerable native package.
+- Package metadata, embedded README, icon, and MIT license declaration.
 
-Third-Party Notices
---------------------
-Third-party dependencies and their respective licenses are documented 
-in the `THIRD-PARTY-NOTICES.txt` file, located in the root of the 
-repository. Please review this file to ensure compliance with any 
-relevant licensing terms.
+Release Channel
+---------------
+Production builds from the main branch are published to nuget.org.

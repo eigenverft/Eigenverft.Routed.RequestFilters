@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<!-- Branding information -->
 	<PropertyGroup>
@@ -79,7 +79,8 @@
 	</ItemGroup>
 	<ItemGroup>
 	  <PackageReference Include="CommunityToolkit.Diagnostics" Version="8.4.0" />
-	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1" />
+	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+	  <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
 	  <PackageReference Include="Serilog" Version="4.3.0" />
 	  <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
 	  <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />

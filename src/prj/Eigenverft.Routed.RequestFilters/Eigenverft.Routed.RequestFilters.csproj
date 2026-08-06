@@ -67,7 +67,7 @@
 			Eigenverft.Routed.RequestFilters is a multi-purpose request filtering library.
 			]]>
 		</Description>
-		<PackageReadmeFile>Readme.md</PackageReadmeFile>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageIcon>eigenverft-logo-v7-harbor-square_128_128.png</PackageIcon>
 		<PackageReleaseNotes>$([System.IO.File]::ReadAllText("$(MSBuildThisFileDirectory)AddPackageFiles\ReleaseNotes.txt"))</PackageReleaseNotes>
@@ -75,6 +75,7 @@
 
 	<!-- In pack add additional files to the package root directory of the nuget. -->
 	<ItemGroup Condition="'$(Stage)' == 'pack'">
+		<None Include="../../../README.NUGET.md" Pack="true" PackagePath="README.md" />
 		<None Include="$(MSBuildProjectDirectory)\AddPackageFiles\**\*" Exclude="$(MSBuildProjectDirectory)\AddPackageFiles\ReleaseNotes.txt" Pack="true" PackagePath="" />
 	</ItemGroup>
 	<ItemGroup>

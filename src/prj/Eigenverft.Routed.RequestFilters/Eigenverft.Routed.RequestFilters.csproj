@@ -69,7 +69,7 @@
 		</Description>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
-		<PackageIcon>eigenverft-logo-v7-harbor-square_128_128.png</PackageIcon>
+		<PackageIcon>evt-logo_on_all_standard_128x128.png</PackageIcon>
 		<PackageReleaseNotes>$([System.IO.File]::ReadAllText("$(MSBuildThisFileDirectory)AddPackageFiles\ReleaseNotes.txt"))</PackageReleaseNotes>
 	</PropertyGroup>
 

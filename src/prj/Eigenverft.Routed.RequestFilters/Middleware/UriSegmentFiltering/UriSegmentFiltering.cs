@@ -1,10 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpResponseExtensions;
+using Eigenverft.WebLib.Middleware.Primitives;
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 
 using Microsoft.AspNetCore.Http;
@@ -160,7 +160,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
                 }
 
                 // "Blacklist and blocked" mode.
-                await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
+                await context.Response.WriteHtmlStatusResponseAsync(options.BlockStatusCode);
                 return;
             }
 
@@ -203,7 +203,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
                     return;
                 }
 
-                await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
+                await context.Response.WriteHtmlStatusResponseAsync(options.BlockStatusCode);
                 return;
             }
 
@@ -313,9 +313,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
 
         private static SegmentClassificationResult ClassifySegments(string[] segments, UriSegmentFilteringOptions options)
         {
-            // Defensive: if options binding yields null arrays, treat as empty lists.
-            string[] whitelist = options.Whitelist ?? Array.Empty<string>();
-            string[] blacklist = options.Blacklist ?? Array.Empty<string>();
+            // Defensive: if options binding yields null collections, treat them as empty lists.
+            IEnumerable<string> whitelist = options.Whitelist is null ? Array.Empty<string>() : options.Whitelist;
+            IEnumerable<string> blacklist = options.Blacklist is null ? Array.Empty<string>() : options.Blacklist;
 
             bool anyWhitelist = false;
             bool anyBlacklist = false;
@@ -372,7 +372,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
             return new SegmentClassificationResult(FilterMatchKind.Blacklist, firstBlacklistSegment);
         }
 
-        private static bool IsWhitelistMatch(string observedSegment, string[] whitelist, bool caseSensitive)
+        private static bool IsWhitelistMatch(string observedSegment, IEnumerable<string> whitelist, bool caseSensitive)
         {
             // Reuse the standard classifier/matcher implementation by passing an empty blacklist.
             // This ensures pattern semantics match your other middlewares (wildcards, case handling, etc.).
@@ -384,7 +384,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
                 FilterPriority.Whitelist) == FilterMatchKind.Whitelist;
         }
 
-        private static bool IsBlacklistMatch(string observedSegment, string[] blacklist, bool caseSensitive)
+        private static bool IsBlacklistMatch(string observedSegment, IEnumerable<string> blacklist, bool caseSensitive)
         {
             // Reuse the standard classifier/matcher implementation by passing an empty whitelist.
             return FilterClassifier.Classify(

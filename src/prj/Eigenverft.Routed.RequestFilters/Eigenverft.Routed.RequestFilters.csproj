@@ -8,7 +8,7 @@
 	<!-- General build settings: defines the output type and target frameworks -->
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<TargetFrameworks>net6.0;net7.0;net8.0;net10.0</TargetFrameworks>
+		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
 		<SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
 		<CheckEolTargetFramework>false</CheckEolTargetFramework>
 		<InvariantGlobalization>true</InvariantGlobalization>
@@ -79,12 +79,13 @@
 		<None Include="$(MSBuildProjectDirectory)\AddPackageFiles\**\*" Exclude="$(MSBuildProjectDirectory)\AddPackageFiles\ReleaseNotes.txt" Pack="true" PackagePath="" />
 	</ItemGroup>
 	<ItemGroup>
-	  <PackageReference Include="CommunityToolkit.Diagnostics" Version="8.4.0" />
+	  <PackageReference Include="Eigenverft.NetLib.Configuration.Binding" Version="1.0.0.6" />
+	  <PackageReference Include="Eigenverft.NetLib.Logging.Deferred" Version="1.0.0.3" />
+	  <PackageReference Include="Eigenverft.NetLib.Networking" Version="1.0.0.3" />
+	  <PackageReference Include="Eigenverft.WebLib.ClientNetwork" Version="1.0.0.4" />
+	  <PackageReference Include="Eigenverft.WebLib.Middleware.Primitives" Version="1.0.0.3" />
 	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
 	  <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
-	  <PackageReference Include="Serilog" Version="4.3.0" />
-	  <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
-	  <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
 	</ItemGroup>
 
 	<PropertyGroup Condition="'$(Stage)' == 'publish'">

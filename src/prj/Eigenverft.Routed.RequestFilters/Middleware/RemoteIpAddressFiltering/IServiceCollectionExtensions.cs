@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressFiltering
 {
@@ -33,7 +35,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<RemoteIpAddressFilteringOptions>().BindConfiguration(nameof(RemoteIpAddressFilteringOptions));
+            services
+                .AddOptions<RemoteIpAddressFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(RemoteIpAddressFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -71,7 +77,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<RemoteIpAddressFilteringOptions>().Bind(configuration.GetSection(nameof(RemoteIpAddressFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(RemoteIpAddressFilteringOptions));
+            services
+                .AddOptions<RemoteIpAddressFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<RemoteIpAddressFilteringOptions>>(
+                new ConfigurationChangeTokenSource<RemoteIpAddressFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

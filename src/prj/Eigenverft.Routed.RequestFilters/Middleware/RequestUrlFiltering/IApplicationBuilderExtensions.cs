@@ -1,10 +1,8 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Options;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.WebLib.ClientNetwork;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,12 +22,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestUrlFiltering)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<RequestUrlFiltering>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestUrlFiltering)}().");
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
-            return app.UseMiddleware<RequestUrlFiltering>();
+            app.UseClientNetworkFeature();
+            return app.UseMiddlewareOnce<RequestUrlFiltering>();
         }
 
         /// <summary>
@@ -41,14 +38,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
             ArgumentNullException.ThrowIfNull(app);
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestUrlFiltering)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<RequestUrlFiltering>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestUrlFiltering)}().");
 
-            IOptionsMonitor<RequestUrlFilteringOptions> innerOptionsMonitor = app.ApplicationServices.GetRequiredService<IOptionsMonitor<RequestUrlFilteringOptions>>();
-            var decoratedOptionsMonitor = new ConfiguredOptionsMonitor<RequestUrlFilteringOptions>(innerOptionsMonitor, additionalConfigure);
+            var decoratedOptionsMonitor = app.CreateUseSiteOptionsMonitor(additionalConfigure);
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
+            app.UseClientNetworkFeature();
             return app.UseMiddleware<RequestUrlFiltering>(decoratedOptionsMonitor);
         }
     }

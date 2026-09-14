@@ -243,18 +243,13 @@ Use `NullStorage` when events should be discarded, `InMemoryStorage` for process
 | URI segment | `AddUriSegmentFiltering` | `UseUriSegmentFiltering` | Individual path segments |
 | User agent | `AddUserAgentFiltering` | `UseUserAgentFiltering` | `User-Agent` header |
 
-### Traffic control and operational middleware
+### Filter orchestration
 
 | Component | Registration | Pipeline | Purpose |
 | --- | --- | --- | --- |
 | Browser bootstrap filtering | `AddBrowserBootstrapFiltering` | `UseBrowserBootstrapFiltering` | Detect and control browser bootstrap requests. |
-| Canonical host redirect | `AddCanonicalHostRedirect` | `UseCanonicalHostRedirect` | Redirect requests to a canonical host. |
 | Development unlocker | `AddDevelopmentUnlocker` | `UseDevelopmentUnlocker` | Apply explicitly configured development unlock behavior. |
 | Evaluation gate | `AddFilteringEvaluationGate` | `UseFilteringEvaluationGate` | Enforce a filtering evaluator decision. |
-| Favicon-aware health probe | `AddHealthProbeFaviconAware` | `UseHealthProbeFaviconAware` | Handle health probes while accounting for favicon requests. |
-| Request delay throttling | `AddRequestDelayThrottling` | `UseRequestDelayThrottling` | Introduce configurable delay-based throttling. |
-| Request logging | `AddRequestLogging` | `UseRequestLogging` | Produce structured request logs. |
-| Request rate smoothing | `AddRequestRateSmoothing` | `UseRequestRateSmoothing` | Smooth request bursts over time. |
 
 Each component has a dedicated namespace below:
 
@@ -310,42 +305,31 @@ Configurable backends bind their conventional sections:
 Middleware order is part of the policy. A typical application should consider this sequence:
 
 1. Configure trusted forwarded headers when running behind a reverse proxy.
-2. Apply canonical redirects and connection-context middleware.
-3. Apply inexpensive request classifiers and filters.
-4. Apply request logging at the point matching the desired logging scope.
-5. Apply `FilteringEvaluationGate` after the filters whose events it evaluates.
-6. Map endpoints and static resources last.
+2. Apply inexpensive request classifiers and filters.
+3. Apply `FilteringEvaluationGate` after the filters whose events it evaluates.
+4. Map application endpoints and resources after the filters that should protect them.
 
 A minimal composed pipeline might look like this:
 
 ```csharp
 app.UseForwardedHeaders();
-app.UseCanonicalHostRedirect();
 app.UseHostNameFiltering();
 app.UseUserAgentFiltering();
-app.UseRequestLogging();
 app.UseFilteringEvaluationGate();
 
 app.MapControllers();
 ```
 
-Only include middleware that has been registered and configured for the application. The package inserts its remote-IP context middleware once when required by dependent components, but proxy trust remains the host application's responsibility.
+Only include middleware that has been registered and configured for the application. Filters that need the peer address
+insert the shared ClientNetwork feature once; proxy trust and forwarded-header ordering remain the host application's
+responsibility.
 
-## 🛠️ Supporting utilities
+## 🧭 Scope boundary
 
-The package also contains optional infrastructure outside the core filters:
-
-- Kestrel SNI configuration and certificate selection
-- permanent HTTPS-redirection registration
-- PWA and Blazor static-file content-type mappings
-- dynamic non-asset file serving
-- application warm-up requests
-- deferred logging and Microsoft logging adapters
-- encoded and decoded JSON configuration layers
-- JSON settings write-back storage
-- certificate and application-directory helpers
-
-Consumers can use the filtering middleware without adopting these hosting utilities.
+Application hosting, Kestrel/SNI, certificates, configuration-source composition, startup logging, static-file serving,
+warm-up, health probes, canonical redirects, general request logging, and traffic shaping are intentionally outside this
+package. Applications that need those capabilities reference their dedicated WebLib or NetLib packages directly; they
+are not forwarded or transitively exposed by RequestFilters.
 
 ## 🧪 Build from source
 
@@ -369,13 +353,10 @@ Main source layout:
 src/
 ├── Eigenverft.Routed.RequestFilters.slnx
 └── prj/
-    └── Eigenverft.Routed.RequestFilters/
-        ├── Middleware/
-        ├── Services/
-        ├── Hosting/
-        ├── Options/
-        ├── Utilities/
-        └── GenericExtensions/
+    ├── Eigenverft.Routed.RequestFilters/
+    │   ├── Middleware/
+    │   └── Services/
+    └── Eigenverft.Routed.RequestFilters.Tests/
 ```
 
 ## 🔐 Security notes

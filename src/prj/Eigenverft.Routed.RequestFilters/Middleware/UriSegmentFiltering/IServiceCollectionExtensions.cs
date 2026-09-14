@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
 {
@@ -33,7 +35,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<UriSegmentFilteringOptions>().BindConfiguration(nameof(UriSegmentFilteringOptions));
+            services
+                .AddOptions<UriSegmentFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(UriSegmentFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -71,7 +77,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<UriSegmentFilteringOptions>().Bind(configuration.GetSection(nameof(UriSegmentFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(UriSegmentFilteringOptions));
+            services
+                .AddOptions<UriSegmentFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<UriSegmentFilteringOptions>>(
+                new ConfigurationChangeTokenSource<UriSegmentFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

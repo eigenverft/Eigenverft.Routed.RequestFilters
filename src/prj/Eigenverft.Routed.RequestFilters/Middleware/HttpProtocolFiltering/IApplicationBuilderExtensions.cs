@@ -1,10 +1,8 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Options;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.WebLib.ClientNetwork;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators;
 
@@ -29,10 +27,10 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HttpProtocolFiltering
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddHttpProtocolFiltering)}().", typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddHttpProtocolFiltering)}().", typeof(IDeferredLogger<HttpProtocolFiltering>));
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
-            return app.UseMiddleware<HttpProtocolFiltering>();
+            app.UseClientNetworkFeature();
+            return app.UseMiddlewareOnce<HttpProtocolFiltering>();
         }
 
         /// <summary>
@@ -48,12 +46,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HttpProtocolFiltering
             ArgumentNullException.ThrowIfNull(app);
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
-            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddHttpProtocolFiltering)}().", typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddHttpProtocolFiltering)}().", typeof(IDeferredLogger<HttpProtocolFiltering>));
 
-            IOptionsMonitor<HttpProtocolFilteringOptions> innerOptionsMonitor = app.ApplicationServices.GetRequiredService<IOptionsMonitor<HttpProtocolFilteringOptions>>();
-            var decoratedOptionsMonitor = new ConfiguredOptionsMonitor<HttpProtocolFilteringOptions>(innerOptionsMonitor, additionalConfigure);
+            var decoratedOptionsMonitor = app.CreateUseSiteOptionsMonitor(additionalConfigure);
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
+            app.UseClientNetworkFeature();
             return app.UseMiddleware<HttpProtocolFiltering>(decoratedOptionsMonitor);
         }
     }

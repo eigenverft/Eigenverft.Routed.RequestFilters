@@ -1,7 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,8 +12,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
     /// </summary>
     /// <remarks>
     /// Defaults are defined via property initializers.
-    /// When configuration supplies a value (for example <c>Whitelist</c>), the binder replaces the array entirely.
-    /// To intentionally clear a default list from configuration, set it to an empty array (<c>[]</c>).
+    /// When configuration supplies one or more entries (for example in <c>Whitelist</c>), they replace the code defaults.
+    /// A missing or explicitly empty configured collection retains the code defaults; use code-based configuration to
+    /// clear a default list intentionally.
     /// <para>
     /// The observed TLS protocol comes from the negotiated handshake (when available) and is typically formatted like <c>Tls12</c> or <c>Tls13</c>.
     /// If TLS is terminated upstream (reverse proxy) the handshake feature might be unavailable; the middleware then normalizes the observed value to <c>string.Empty</c>.
@@ -73,7 +73,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
         /// Default: modern TLS versions.
         /// If configuration specifies <c>Whitelist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[]
+        public List<string> Whitelist { get; set; } = new()
         {
             "Tls12",
             "Tls13",
@@ -86,7 +86,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
         /// Default: includes empty (unknown/unavailable) and common legacy tokens.
         /// If configuration specifies <c>Blacklist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[]
+        public List<string> Blacklist { get; set; } = new()
         {
             "",
             "None",

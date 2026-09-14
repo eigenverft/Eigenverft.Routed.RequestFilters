@@ -1,4 +1,5 @@
-﻿using Eigenverft.Routed.RequestFilters.GenericExtensions.StringExtensions;
+﻿
+using System.Collections.Generic;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.Abstractions
 {
@@ -60,7 +61,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.Abstractions
     public static class FilterClassifier
     {
         /// <summary>
-        /// Classifies a value against whitelist and blacklist pattern arrays.
+        /// Classifies a value against whitelist and blacklist pattern collections.
         /// </summary>
         /// <param name="value">
         /// The value to classify, for example an HTTP protocol string or host name.
@@ -105,7 +106,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.Abstractions
         /// </item>
         /// </list>
         /// </remarks>
-        public static FilterMatchKind Classify(string value, string[]? whitelist, string[]? blacklist, bool caseSensitive, FilterPriority filterPriority)
+        public static FilterMatchKind Classify(
+            string value,
+            IEnumerable<string>? whitelist,
+            IEnumerable<string>? blacklist,
+            bool caseSensitive,
+            FilterPriority filterPriority)
         {
             value ??= string.Empty;
 

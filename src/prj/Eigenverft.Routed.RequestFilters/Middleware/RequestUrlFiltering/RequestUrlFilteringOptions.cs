@@ -3,10 +3,9 @@
 // Namespace: Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
 // ============================================================================
 
-using System;
+using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -18,8 +17,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
     /// </summary>
     /// <remarks>
     /// Defaults are defined via property initializers.
-    /// When configuration supplies a value (for example <c>Whitelist</c>), the binder replaces the array entirely.
-    /// To intentionally clear a default list from configuration, set it to an empty array (<c>[]</c>).
+    /// When configuration supplies one or more entries (for example in <c>Whitelist</c>), they replace the code defaults.
+    /// A missing or explicitly empty configured collection retains the code defaults; use code-based configuration to
+    /// clear a default list intentionally.
     /// <para>
     /// The observed value is the request URI local path (for example <c>/api/v1/users</c>).
     /// If the URI cannot be constructed, the observed value becomes <see cref="string.Empty"/> and is treated as blacklisted.
@@ -62,7 +62,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
         /// Default: empty (allow behavior is controlled by <see cref="AllowUnmatchedRequests"/>).
         /// If configuration specifies <c>Whitelist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[] { "*" };
+        public List<string> Whitelist { get; set; } = new() { "*" };
 
         /// <summary>
         /// Gets or sets the list of explicitly forbidden request URL path patterns.
@@ -71,7 +71,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
         /// Default: empty.
         /// If configuration specifies <c>Blacklist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[] { "*.php*", "*sitemap.xml*", "*robots.txt*", "*XDEBUG_SESSION_START*", "*usr/local*", "*bin/sh*", "*,/*", "*:///*", "*...*", "*../*", "*.ashx*" };
+        public List<string> Blacklist { get; set; } = new() { "*.php*", "*sitemap.xml*", "*robots.txt*", "*XDEBUG_SESSION_START*", "*usr/local*", "*bin/sh*", "*,/*", "*:///*", "*...*", "*../*", "*.ashx*" };
 
         /// <summary>
         /// Gets or sets a value indicating whether path pattern matching is case sensitive.

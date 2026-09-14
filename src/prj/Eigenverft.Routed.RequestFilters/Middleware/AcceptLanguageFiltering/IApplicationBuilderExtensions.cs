@@ -1,10 +1,8 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Options;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.WebLib.ClientNetwork;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators;
 
@@ -28,10 +26,10 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddAcceptLanguageFiltering)}().", typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddAcceptLanguageFiltering)}().", typeof(IDeferredLogger<AcceptLanguageFiltering>));
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
-            return app.UseMiddleware<AcceptLanguageFiltering>();
+            app.UseClientNetworkFeature();
+            return app.UseMiddlewareOnce<AcceptLanguageFiltering>();
         }
 
         /// <summary>
@@ -46,12 +44,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
             ArgumentNullException.ThrowIfNull(app);
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
-            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddAcceptLanguageFiltering)}().", typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddAcceptLanguageFiltering)}().", typeof(IDeferredLogger<AcceptLanguageFiltering>));
 
-            IOptionsMonitor<AcceptLanguageFilteringOptions> innerOptionsMonitor = app.ApplicationServices.GetRequiredService<IOptionsMonitor<AcceptLanguageFilteringOptions>>();
-            var decoratedOptionsMonitor = new ConfiguredOptionsMonitor<AcceptLanguageFilteringOptions>(innerOptionsMonitor, additionalConfigure);
+            var decoratedOptionsMonitor = app.CreateUseSiteOptionsMonitor(additionalConfigure);
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
+            app.UseClientNetworkFeature();
             return app.UseMiddleware<AcceptLanguageFiltering>(decoratedOptionsMonitor);
         }
     }

@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.HostNameFiltering
 {
@@ -33,7 +35,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HostNameFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<HostNameFilteringOptions>().BindConfiguration(nameof(HostNameFilteringOptions));
+            services
+                .AddOptions<HostNameFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(HostNameFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -71,7 +77,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HostNameFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<HostNameFilteringOptions>().Bind(configuration.GetSection(nameof(HostNameFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(HostNameFilteringOptions));
+            services
+                .AddOptions<HostNameFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<HostNameFilteringOptions>>(
+                new ConfigurationChangeTokenSource<HostNameFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

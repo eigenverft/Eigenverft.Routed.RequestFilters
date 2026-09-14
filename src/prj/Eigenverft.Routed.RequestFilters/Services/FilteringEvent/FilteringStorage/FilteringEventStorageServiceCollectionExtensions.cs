@@ -1,5 +1,6 @@
 ﻿using System;
 
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.InMemoryFiltering;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.InSqliteDbFiltering;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
@@ -254,6 +255,7 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStor
         /// <param name="services">The service collection to register dependencies into.</param>
         private static void AddInfrastructure(IServiceCollection services)
         {
+            services.TryAddSingleton(typeof(IDeferredLogger<>), typeof(DeferredLogger<>));
             services.AddOptions();
         }
 

@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="prj/Eigenverft.Routed.RequestFilters/Eigenverft.Routed.RequestFilters.csproj" />
+  <Project Path="prj/Eigenverft.Routed.RequestFilters.Tests/Eigenverft.Routed.RequestFilters.Tests.csproj" />
 </Solution>

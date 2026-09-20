@@ -1,6 +1,6 @@
 # 🛡️ Eigenverft.Routed.RequestFilters
 
-[![NuGet Version](https://img.shields.io/nuget/v/Eigenverft.Routed.RequestFilters?label=NuGet&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![NuGet Downloads](https://img.shields.io/nuget/dt/Eigenverft.Routed.RequestFilters?label=Downloads&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![Build Status](https://img.shields.io/github/actions/workflow/status/eigenverft/Eigenverft.Routed.RequestFilters/cicd.yml?branch=main&label=build)](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters/actions/workflows/cicd.yml) [![Targets](https://img.shields.io/badge/targets-.NET%206%20%7C%207%20%7C%208%20%7C%2010-512BD4?logo=dotnet&logoColor=white)](#-installation) [![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Routed.RequestFilters?logo=mit)](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters/blob/main/LICENSE)
+[![NuGet Version](https://img.shields.io/nuget/v/Eigenverft.Routed.RequestFilters?label=NuGet&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![NuGet Downloads](https://img.shields.io/nuget/dt/Eigenverft.Routed.RequestFilters?label=Downloads&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![Build Status](https://img.shields.io/github/actions/workflow/status/eigenverft/Eigenverft.Routed.RequestFilters/cicd.yml?branch=main&label=build)](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters/actions/workflows/cicd.yml) [![Targets](https://img.shields.io/badge/targets-.NET%208%20%7C%2010-512BD4?logo=dotnet&logoColor=white)](#-installation) [![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Routed.RequestFilters?logo=mit)](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters/blob/main/LICENSE)
 
 Composable request filtering, traffic control, diagnostics, and hosting utilities for ASP.NET Core applications.
 
@@ -39,8 +39,6 @@ dotnet add package Eigenverft.Routed.RequestFilters
 
 The package provides assets for:
 
-- `net6.0`
-- `net7.0`
 - `net8.0`
 - `net10.0`
 

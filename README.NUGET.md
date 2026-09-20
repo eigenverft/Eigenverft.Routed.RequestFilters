@@ -2,7 +2,7 @@
 
 [![NuGet Version](https://img.shields.io/nuget/v/Eigenverft.Routed.RequestFilters?label=NuGet&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![NuGet Downloads](https://img.shields.io/nuget/dt/Eigenverft.Routed.RequestFilters?label=Downloads&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![Build Status](https://img.shields.io/github/actions/workflow/status/eigenverft/Eigenverft.Routed.RequestFilters/cicd.yml?branch=main&label=build)](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters/actions/workflows/cicd.yml) [![Targets](https://img.shields.io/badge/targets-.NET%208%20%7C%2010-512BD4?logo=dotnet&logoColor=white)](#-installation) [![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Routed.RequestFilters?logo=mit)](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters/blob/main/LICENSE)
 
-Composable request filtering, traffic control, diagnostics, and hosting utilities for ASP.NET Core applications.
+Composable request filtering, filter evaluation, enforcement, and filter-event storage for ASP.NET Core applications.
 
 > **Important:** This project is currently **pre-1.0**. Public APIs, option names, defaults, and configuration behavior may change between preview releases.
 
@@ -12,7 +12,7 @@ Composable request filtering, traffic control, diagnostics, and hosting utilitie
 | --- | --- |
 | Package | `Eigenverft.Routed.RequestFilters` |
 | Application model | ASP.NET Core middleware and dependency-injection extensions |
-| Target frameworks | .NET 6, .NET 7, .NET 8, and .NET 10 |
+| Target frameworks | .NET 8 and .NET 10 |
 | Configuration | `IOptionsMonitor<T>`, `IConfiguration`, or code-based delegates |
 | Event storage | Null, bounded in-memory, or SQLite |
 | License | MIT |
@@ -127,7 +127,7 @@ builder.Services.AddHostNameFiltering();
 // Bind configuration, then apply code-based overrides.
 builder.Services.AddHostNameFiltering(options =>
 {
-    options.Whitelist = new[] { "api.example.com" };
+    options.Whitelist = new() { "api.example.com" };
     options.AllowUnmatchedRequests = false;
 });
 
@@ -170,7 +170,7 @@ using Eigenverft.Routed.RequestFilters.Middleware.HttpMethodFiltering;
 
 builder.Services.AddHttpMethodFiltering(options =>
 {
-    options.Whitelist = new[] { "GET", "HEAD" };
+    options.Whitelist = new() { "GET", "HEAD" };
     options.AllowBlacklistedRequests = false;
     options.AllowUnmatchedRequests = false;
     options.BlockStatusCode = StatusCodes.Status405MethodNotAllowed;

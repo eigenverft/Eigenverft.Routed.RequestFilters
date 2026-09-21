@@ -20,11 +20,20 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.Filterin
         private const int UnmatchedWeight = 1;
         private const int Threshold = 20;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SimpleFilteringScoreFilteringEvaluator"/> class.
+        /// </summary>
+        /// <param name="storage">The filtering event storage used for score input.</param>
         public SimpleFilteringScoreFilteringEvaluator(IFilteringEventStorage storage)
         {
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         }
 
+        /// <summary>
+        /// Evaluates the stored blacklist and unmatched counts for a remote address.
+        /// </summary>
+        /// <param name="remoteIpAddress">The normalized remote IP address to evaluate.</param>
+        /// <returns>The resulting filtering decision and explanation.</returns>
         public FilteringEvaluationResult Evaluate(string remoteIpAddress)
         {
             int blacklistCount = _storage.GetBlacklistCount(remoteIpAddress);

@@ -3,12 +3,8 @@
 using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
 using Eigenverft.WebLib.ClientNetwork;
 using Eigenverft.NetLib.Logging.Deferred;
-using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation;
-using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressFiltering
 {

@@ -28,8 +28,8 @@ namespace Eigenverft.Routed.RequestFilters.Tests
 
             AcceptLanguageFilteringOptions options = ResolveAcceptLanguageOptions(configuration);
 
-            CollectionAssert.AreEqual(new[] { "*" }, options.Whitelist);
-            CollectionAssert.AreEqual(new[] { "", "*zh-CN*", "*zh-*", "*-CN*" }, options.Blacklist);
+            Assert.AreSequenceEqual(new[] { "*" }, options.Whitelist);
+            Assert.AreSequenceEqual(new[] { "", "*zh-CN*", "*zh-*", "*-CN*" }, options.Blacklist);
         }
 
         [TestMethod]
@@ -46,8 +46,8 @@ namespace Eigenverft.Routed.RequestFilters.Tests
 
             AcceptLanguageFilteringOptions options = ResolveAcceptLanguageOptions(configuration);
 
-            CollectionAssert.AreEqual(new[] { "de-DE" }, options.Whitelist);
-            CollectionAssert.AreEqual(new[] { "fr-FR" }, options.Blacklist);
+            Assert.AreSequenceEqual(new[] { "de-DE" }, options.Whitelist);
+            Assert.AreSequenceEqual(new[] { "fr-FR" }, options.Blacklist);
         }
 
         [TestMethod]
@@ -64,8 +64,8 @@ namespace Eigenverft.Routed.RequestFilters.Tests
 
             AcceptLanguageFilteringOptions options = ResolveAcceptLanguageOptions(configuration);
 
-            CollectionAssert.AreEqual(new[] { "*" }, options.Whitelist);
-            CollectionAssert.AreEqual(new[] { "", "*zh-CN*", "*zh-*", "*-CN*" }, options.Blacklist);
+            Assert.AreSequenceEqual(new[] { "*" }, options.Whitelist);
+            Assert.AreSequenceEqual(new[] { "", "*zh-CN*", "*zh-*", "*-CN*" }, options.Blacklist);
         }
 
         [TestMethod]
@@ -106,7 +106,7 @@ namespace Eigenverft.Routed.RequestFilters.Tests
                 IOptionsMonitor<AcceptLanguageFilteringOptions> monitor =
                     provider.GetRequiredService<IOptionsMonitor<AcceptLanguageFilteringOptions>>();
 
-                CollectionAssert.AreEqual(new[] { "configured" }, monitor.CurrentValue.Whitelist);
+                Assert.AreSequenceEqual(new[] { "configured" }, monitor.CurrentValue.Whitelist);
 
                 File.WriteAllText(filePath, """
                     {
@@ -117,7 +117,7 @@ namespace Eigenverft.Routed.RequestFilters.Tests
                     """);
                 explicitConfiguration.Reload();
 
-                CollectionAssert.AreEqual(new[] { "*" }, monitor.CurrentValue.Whitelist);
+                Assert.AreSequenceEqual(new[] { "*" }, monitor.CurrentValue.Whitelist);
             }
             finally
             {

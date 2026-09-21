@@ -7,8 +7,6 @@ using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
 {

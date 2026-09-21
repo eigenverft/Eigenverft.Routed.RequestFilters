@@ -5,8 +5,6 @@ using Eigenverft.WebLib.ClientNetwork;
 using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
 {

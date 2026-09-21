@@ -46,7 +46,7 @@ namespace Eigenverft.Routed.RequestFilters.Tests
 
             Assert.IsFalse(result.NextCalled);
             Assert.AreEqual(StatusCodes.Status403Forbidden, result.StatusCode);
-            StringAssert.Contains(result.ResponseBody, "403");
+            Assert.Contains("403", result.ResponseBody);
         }
 
         [TestMethod]

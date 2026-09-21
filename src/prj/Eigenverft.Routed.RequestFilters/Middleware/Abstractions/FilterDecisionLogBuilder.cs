@@ -22,6 +22,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.Abstractions
         /// and emitting a stable message shape: middleware, match, decision, observed, and whether the event was logged for the evaluator.
         /// </summary>
         /// <param name="middlewareName">The middleware name, typically <c>nameof(TheMiddleware)</c>.</param>
+        /// <param name="traceIdentifier">The request trace identifier associated with the decision.</param>
         /// <param name="matchKind">The match kind produced by the classifier.</param>
         /// <param name="isAllowed">Whether the request is allowed to proceed.</param>
         /// <param name="observedValue">The observed value (e.g. remote ip, host, protocol, path).</param>

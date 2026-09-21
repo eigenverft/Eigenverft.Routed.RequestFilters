@@ -1,6 +1,6 @@
 # 🛡️ Eigenverft.Routed.RequestFilters
 
-<!-- Maintenance note: This GitHub README has a NuGet/CommonMark counterpart in README.NUGET.md. When changing shared content here, update that file as needed. -->
+<!-- Maintenance note: The NuGet package README is maintained at src/prj/Eigenverft.Routed.RequestFilters/Properties/NugetMetadata/Readme.md. Keep shared content aligned when changing either document. -->
 
 [![NuGet Version](https://img.shields.io/nuget/v/Eigenverft.Routed.RequestFilters?label=NuGet&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![NuGet Downloads](https://img.shields.io/nuget/dt/Eigenverft.Routed.RequestFilters?label=Downloads&logo=nuget)](https://www.nuget.org/packages/Eigenverft.Routed.RequestFilters) [![Build Status](https://img.shields.io/github/actions/workflow/status/eigenverft/Eigenverft.Routed.RequestFilters/cicd.yml?branch=main&label=build)](https://github.com/eigenverft/Eigenverft.Routed.RequestFilters/actions/workflows/cicd.yml) [![Targets](https://img.shields.io/badge/targets-.NET%208%20%7C%2010-512BD4?logo=dotnet&logoColor=white)](#-installation) [![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Routed.RequestFilters?logo=mit)](LICENSE)
 

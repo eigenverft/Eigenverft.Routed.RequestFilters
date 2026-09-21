@@ -4,7 +4,6 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
 using Eigenverft.Routed.RequestFilters.Middleware.HttpMethodFiltering;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage;

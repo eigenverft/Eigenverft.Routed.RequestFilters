@@ -19,21 +19,23 @@ namespace Eigenverft.Routed.RequestFilters.Tests
     [TestClass]
     public sealed class FilteringEventStorageTests
     {
+        public TestContext TestContext { get; set; } = null!;
+
         [TestMethod]
         public async Task NullStorageIsStandaloneNoOpBackend()
         {
             using ServiceProvider provider = CreateServices(FilteringStorageKind.Null).BuildServiceProvider();
             IFilteringEventStorage storage = provider.GetRequiredService<IFilteringEventStorage>();
 
-            await storage.StoreAsync(CreateEvent("203.0.113.30", "A", FilterMatchKind.Blacklist));
+            await storage.StoreAsync(CreateEvent("203.0.113.30", "A", FilterMatchKind.Blacklist), TestContext.CancellationToken);
 
             Assert.AreEqual(0, storage.GetBlacklistCount("203.0.113.30"));
             Assert.AreEqual(0, storage.GetUnmatchedCount("203.0.113.30"));
-            Assert.AreEqual(0, storage.GetByEventSourceAndMatchKind("203.0.113.30").Count);
-            Assert.AreEqual(0, storage.GetByEventSource("203.0.113.30").Count);
-            Assert.AreEqual(0, storage.GetByMatchKind("203.0.113.30").Count);
-            Assert.IsFalse(await storage.RemoveByRemoteIpAddressAsync("203.0.113.30"));
-            await storage.ClearAsync();
+            Assert.IsEmpty(storage.GetByEventSourceAndMatchKind("203.0.113.30"));
+            Assert.IsEmpty(storage.GetByEventSource("203.0.113.30"));
+            Assert.IsEmpty(storage.GetByMatchKind("203.0.113.30"));
+            Assert.IsFalse(await storage.RemoveByRemoteIpAddressAsync("203.0.113.30", TestContext.CancellationToken));
+            await storage.ClearAsync(TestContext.CancellationToken);
         }
 
         [TestMethod]
@@ -53,10 +55,10 @@ namespace Eigenverft.Routed.RequestFilters.Tests
                 IFilteringEventStorage storage = provider.GetRequiredService<IFilteringEventStorage>();
                 const string ip = "203.0.113.31";
 
-                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Blacklist));
-                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Blacklist));
-                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Unmatched));
-                await storage.StoreAsync(CreateEvent(ip, "B", FilterMatchKind.Whitelist));
+                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Blacklist), TestContext.CancellationToken);
+                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Blacklist), TestContext.CancellationToken);
+                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Unmatched), TestContext.CancellationToken);
+                await storage.StoreAsync(CreateEvent(ip, "B", FilterMatchKind.Whitelist), TestContext.CancellationToken);
 
                 Assert.AreEqual(2, storage.GetBlacklistCount(ip));
                 Assert.AreEqual(1, storage.GetUnmatchedCount(ip));
@@ -65,24 +67,24 @@ namespace Eigenverft.Routed.RequestFilters.Tests
                 Assert.AreEqual(3L, storage.GetByEventSource(ip).Single(row => row.EventSource == "A").Count);
                 Assert.AreEqual(1L, storage.GetByMatchKind(ip).Single(row => row.MatchKind == FilterMatchKind.Whitelist).Count);
 
-                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip, "A", FilterMatchKind.Blacklist));
+                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip, "A", FilterMatchKind.Blacklist, TestContext.CancellationToken));
                 Assert.AreEqual(0, storage.GetBlacklistCount(ip));
                 Assert.AreEqual(1, storage.GetUnmatchedCount(ip));
 
-                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip, "A"));
+                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip, "A", TestContext.CancellationToken));
                 Assert.AreEqual(0, storage.GetUnmatchedCount(ip));
 
-                await storage.StoreAsync(CreateEvent(ip, "B", FilterMatchKind.Blacklist));
-                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip, FilterMatchKind.Blacklist));
+                await storage.StoreAsync(CreateEvent(ip, "B", FilterMatchKind.Blacklist), TestContext.CancellationToken);
+                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip, FilterMatchKind.Blacklist, TestContext.CancellationToken));
                 Assert.AreEqual(0, storage.GetBlacklistCount(ip));
 
-                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip));
-                Assert.IsFalse(await storage.RemoveByRemoteIpAddressAsync(ip));
-                Assert.AreEqual(0, storage.GetByEventSourceAndMatchKind(ip).Count);
+                Assert.IsTrue(await storage.RemoveByRemoteIpAddressAsync(ip, TestContext.CancellationToken));
+                Assert.IsFalse(await storage.RemoveByRemoteIpAddressAsync(ip, TestContext.CancellationToken));
+                Assert.IsEmpty(storage.GetByEventSourceAndMatchKind(ip));
 
-                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Blacklist));
-                await storage.StoreAsync(CreateEvent("203.0.113.32", "A", FilterMatchKind.Unmatched));
-                await storage.ClearAsync();
+                await storage.StoreAsync(CreateEvent(ip, "A", FilterMatchKind.Blacklist), TestContext.CancellationToken);
+                await storage.StoreAsync(CreateEvent("203.0.113.32", "A", FilterMatchKind.Unmatched), TestContext.CancellationToken);
+                await storage.ClearAsync(TestContext.CancellationToken);
                 Assert.AreEqual(0, storage.GetBlacklistCount(ip));
                 Assert.AreEqual(0, storage.GetUnmatchedCount("203.0.113.32"));
             }

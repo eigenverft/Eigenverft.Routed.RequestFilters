@@ -262,7 +262,7 @@ $NuGetLicenseMappingsPath = Get-Path -Paths @("$ConfigRootPath","nuget-license",
 $NuGetLicenseFileMappingsPath = Get-Path -Paths @("$ConfigRootPath","nuget-license","license-file-mappings.json")
 
 # Enable github specific nuget sources.
-$GitHubPackagesUser = "carsten-riedel"
+$GitHubPackagesUser = "eigenverft"
 $GitHubSourceName = "github"
 $GitHubSourceUri = "https://nuget.pkg.github.com/$GitHubPackagesUser/index.json"
 $NuGetTestSourceUri = "https://apiint.nugettest.org/v3/index.json"

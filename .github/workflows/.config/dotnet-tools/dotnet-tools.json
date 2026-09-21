@@ -10,14 +10,14 @@
       "rollForward": false
     },
     "docfx": {
-      "version": "2.74.1",
+      "version": "2.78.5",
       "commands": [
         "docfx"
       ],
       "rollForward": false
     },
     "Eigenverft.Distributed.Drydock": {
-      "version": "0.1.20257.10053-dev",
+      "version": "1.0.20265.24989",
       "commands": [
         "drydock"
       ],

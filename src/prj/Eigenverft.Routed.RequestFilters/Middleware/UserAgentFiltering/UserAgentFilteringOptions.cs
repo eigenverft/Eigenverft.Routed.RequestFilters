@@ -1,7 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,8 +12,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
     /// </summary>
     /// <remarks>
     /// Defaults are defined via property initializers.
-    /// When configuration supplies a value (for example <c>Whitelist</c>), the binder replaces the array entirely.
-    /// To intentionally clear a default list from configuration, set it to an empty array (<c>[]</c>).
+    /// When configuration supplies one or more entries (for example in <c>Whitelist</c>), they replace the code defaults.
+    /// A missing or explicitly empty configured collection retains the code defaults; use code-based configuration to
+    /// clear a default list intentionally.
     /// <para>
     /// The observed value is the first User-Agent header value (if present). Missing header is treated as <see cref="string.Empty"/>.
     /// </para>
@@ -56,7 +56,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
         /// Default: empty (allow behavior is controlled by <see cref="AllowUnmatchedRequests"/>).
         /// If configuration specifies <c>Whitelist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[] { "*" };
+        public List<string> Whitelist { get; set; } = new() { "*" };
 
         /// <summary>
         /// Gets or sets the list of explicitly forbidden User-Agent patterns.
@@ -65,7 +65,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
         /// Default: empty.
         /// If configuration specifies <c>Blacklist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[] { "", "*curl*", "*https://*", "*http://*", "*python*", "*AsyncHttpClient*", "*Googlebot*", "*google.com*", "*researchscan.com*", "*NetAPI*", "*Go-http-client*", "*ALittle*", "*Root Slut*", "*zgrab*", "*Palo Alto Networks*", "*WebSearch*", "*YaBrowser*", "*UCBrowser*", "*panscient*", "*Firefox/45.0*", "*Firefox/81.0*" };
+        public List<string> Blacklist { get; set; } = new() { "", "*curl*", "*https://*", "*http://*", "*python*", "*AsyncHttpClient*", "*Googlebot*", "*google.com*", "*researchscan.com*", "*NetAPI*", "*Go-http-client*", "*ALittle*", "*Root Slut*", "*zgrab*", "*Palo Alto Networks*", "*WebSearch*", "*YaBrowser*", "*UCBrowser*", "*panscient*", "*Firefox/45.0*", "*Firefox/81.0*" };
 
         /// <summary>
         /// Gets or sets a value indicating whether pattern matching is case sensitive.

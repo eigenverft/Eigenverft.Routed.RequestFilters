@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
 {
@@ -28,7 +30,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<AcceptLanguageFilteringOptions>().BindConfiguration(nameof(AcceptLanguageFilteringOptions));
+            services
+                .AddOptions<AcceptLanguageFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(AcceptLanguageFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -64,7 +70,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<AcceptLanguageFilteringOptions>().Bind(configuration.GetSection(nameof(AcceptLanguageFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(AcceptLanguageFilteringOptions));
+            services
+                .AddOptions<AcceptLanguageFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<AcceptLanguageFilteringOptions>>(
+                new ConfigurationChangeTokenSource<AcceptLanguageFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

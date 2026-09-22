@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 
-using Eigenverft.Routed.RequestFilters.Options;
-
 namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators.SourceAndMatchKindWeighted
 {
     /// <summary>
@@ -11,16 +9,14 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.Filterin
     /// <remarks>
     /// Reviewer note:
     /// <para>
-    /// <see cref="SourceFactors"/> is seeded with code defaults, but uses "configuration overrides defaults" semantics:
-    /// the first configuration write clears seeded defaults once, so configured values fully replace defaults (no merging).
+    /// <see cref="SourceFactors"/> is seeded with code defaults. Registration uses replacement binding, so configured
+    /// values fully replace defaults instead of merging with them.
     /// </para>
     /// <para>
-    /// By design, a missing configuration section (or a present-but-empty section with no children) typically results in no binder writes,
-    /// so the seeded defaults remain in effect.
+    /// By design, a missing or explicitly empty configured dictionary retains the seeded defaults.
     /// </para>
     /// <para>
-    /// If you ever need an explicit "empty means empty" outcome, opt into that intentionally (for example via a separate flag)
-    /// and call <see cref="OptionsConfigOverridesDefaultsDictionary{TKey, TValue}.Clear"/> in post-configure.
+    /// An empty configured dictionary deliberately retains the code defaults.
     /// </para>
     /// <para>
     /// Example <c>appsettings.json</c> section:
@@ -53,19 +49,13 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.Filterin
         /// Per event-source multipliers applied when computing the score.
         /// </summary>
         /// <remarks>
-        /// Reviewer note:
-        /// Seeded defaults are intended to be "good enough out of the box", and configuration can fully replace them.
-        /// Avoid using collection-initializer syntax on this property type, because it calls <see cref="IDictionary{TKey, TValue}.Add(TKey, TValue)"/>
-        /// and would be treated as an override write.
+        /// Seeded defaults are intended to be "good enough out of the box", and non-empty configuration fully replaces them.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsDictionary<string, int> SourceFactors { get; set; }
-            = new(
-                dictionary: new Dictionary<string, int>
-                {
-                    ["HostNameFiltering"] = 1,
-                    ["TlsProtocolFiltering"] = 1,
-                },
-                comparer: StringComparer.Ordinal);
+        public Dictionary<string, int> SourceFactors { get; set; } = new(StringComparer.Ordinal)
+        {
+            ["HostNameFiltering"] = 1,
+            ["TlsProtocolFiltering"] = 1,
+        };
 
         /// <summary>
         /// Weight applied to <c>Blacklist</c> matches.

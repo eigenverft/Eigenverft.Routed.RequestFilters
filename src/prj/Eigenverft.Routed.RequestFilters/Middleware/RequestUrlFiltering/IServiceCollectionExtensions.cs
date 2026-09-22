@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
 {
@@ -26,7 +28,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<RequestUrlFilteringOptions>().BindConfiguration(nameof(RequestUrlFilteringOptions));
+            services
+                .AddOptions<RequestUrlFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(RequestUrlFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -55,7 +61,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestUrlFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<RequestUrlFilteringOptions>().Bind(configuration.GetSection(nameof(RequestUrlFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(RequestUrlFilteringOptions));
+            services
+                .AddOptions<RequestUrlFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<RequestUrlFilteringOptions>>(
+                new ConfigurationChangeTokenSource<RequestUrlFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

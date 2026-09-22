@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
 {
@@ -28,7 +30,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<UserAgentFilteringOptions>().BindConfiguration(nameof(UserAgentFilteringOptions));
+            services
+                .AddOptions<UserAgentFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(UserAgentFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -64,7 +70,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<UserAgentFilteringOptions>().Bind(configuration.GetSection(nameof(UserAgentFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(UserAgentFilteringOptions));
+            services
+                .AddOptions<UserAgentFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<UserAgentFilteringOptions>>(
+                new ConfigurationChangeTokenSource<UserAgentFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

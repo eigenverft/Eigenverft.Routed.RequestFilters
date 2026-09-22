@@ -1,7 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -64,7 +63,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
         /// Reviewer note: This is intended to normalize characters that may complicate configuration patterns.
         /// Defaults replace <c>?</c>, <c>*</c>, and <c>#</c>.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> SignatureSanitizeTokens { get; set; } = new[] { "?", "*", "#" };
+        public List<string> SignatureSanitizeTokens { get; set; } = new() { "?", "*", "#" };
 
         /// <summary>
         /// Gets or sets the replacement string used for entries from <see cref="SignatureSanitizeTokens"/>.
@@ -83,12 +82,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
         /// <summary>
         /// Gets or sets the list of explicitly allowed signature patterns.
         /// </summary>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[] { "*" };
+        public List<string> Whitelist { get; set; } = new() { "*" };
 
         /// <summary>
         /// Gets or sets the list of explicitly forbidden signature patterns.
         /// </summary>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[] { "*HTTP.Method=POST*Content-Type*multipart/form-data*boundary*bissa*" };
+        public List<string> Blacklist { get; set; } = new() { "*HTTP.Method=POST*Content-Type*multipart/form-data*boundary*bissa*" };
 
         /// <summary>
         /// Gets or sets a value indicating whether signature pattern matching is case sensitive.

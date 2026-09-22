@@ -1,0 +1,92 @@
+Next Release - Filter-only Capability Split (Unreleased)
+=======================================================
+
+This release narrows Eigenverft.Routed.RequestFilters to request filters,
+filter policy and decisions, filter events, evaluation/enforcement, and
+filter-owned event storage.
+
+Breaking Changes
+----------------
+- Target frameworks are now .NET 8 and .NET 10. .NET 6 and .NET 7 assets are
+  no longer produced.
+- Removed application-hosting and configuration APIs: WebApplicationBuilderFactory,
+  AppDirectoryLayout, SetDirectoryLayout/GetDirectoryLayout,
+  AddDefaultConfigurationSources, encoded-settings APIs,
+  configuration-precedence diagnostics, WritebackJsonStore, ProcessPath, and
+  writable-directory helpers.
+- Removed Kestrel/SNI and certificate APIs: ConfigureKestrelSni,
+  ConfigureKestrelSniFromConfiguration, KestrelSniSettings,
+  CertificateMappingSetting, CertificateManager, and their supporting enums
+  and models.
+- Removed static-file, warm-up, host/HTTPS, and startup-logging helpers:
+  UseStaticFilesWithPwaAndBlazorContentTypes, AddPwaAndBlazorMappings,
+  UseNonAssetFiles/UseDynamicNonAssetFiles, AddWarmUpRequests,
+  AddAllowedHosts, AddPermanentHttpsRedirection, BootstrapLogger, and the
+  Serilog/Microsoft/deferred logger bridge extensions.
+- Removed non-filter middleware and options for CanonicalHostRedirect,
+  HealthProbeFaviconAware, RequestLogging, RequestDelayThrottling, and
+  RequestRateSmoothing.
+- Removed shared local infrastructure APIs: RemoteIpAddressContextMiddleware,
+  its HttpContext extensions, generic HttpContext.Items helpers,
+  WriteDefaultStatusCodeAnswer/WriteDefaultStatusCodeAnswerEx,
+  UseMiddlewareOnce, EnsureServicesRegistered, GetIpInfo and IP normalization,
+  HttpStatusCodeDescriptions, ConfiguredOptionsMonitor, the public generic
+  wildcard/regex extensions, and the local deferred-logger types and
+  AddDeferredLogging.
+- Filter option collection properties now use List<T>; the weighted evaluator's
+  SourceFactors property now uses Dictionary<string, int>. The removed
+  OptionsConfigOverridesDefaultsList and OptionsConfigOverridesDefaultsDictionary
+  types are no longer part of the public API.
+- FilterClassifier.Classify accepts IEnumerable<string> pattern collections
+  instead of array-only parameters.
+
+Retained Filter Capability Dependencies
+---------------------------------------
+- Eigenverft.WebLib.Middleware.Primitives supplies middleware registration,
+  DI validation, use-site options, typed request features, and status responses.
+- Eigenverft.WebLib.ClientNetwork supplies the peer-address feature used by
+  filters that classify or record client addresses.
+- Eigenverft.NetLib.Networking supplies IP normalization and CIDR matching.
+- Eigenverft.NetLib.Configuration.Binding supplies explicit replacement binding
+  for normal list/dictionary option properties. Missing or explicitly empty
+  configured collections retain code defaults; non-empty collections replace
+  them, including after reload.
+- Eigenverft.NetLib.Logging.Deferred supplies lazy filter logging.
+
+These dependencies support retained filter code only. Removed application
+capabilities are not re-exported through RequestFilters. An application that
+still needs hosting, Kestrel/SNI, certificates, configuration composition,
+static files, warm-up, health probes, redirects, general request logging, or
+traffic shaping must select and reference the corresponding narrow package
+directly.
+
+Validation
+----------
+- Release builds cover .NET 8 and .NET 10.
+- 47 characterization tests on each target framework cover collection binding,
+  pattern/CIDR/client-network behavior, activation of every retained filter,
+  filter-event recording, EvaluationGate, DevelopmentUnlocker, and the
+  Null/InMemory/SQLite event stores.
+
+Release Notes – 0.1.* (2026-07-23)
+===================================
+
+Status: First Public Preview Release
+------------------------------------
+This is the first public NuGet release of Eigenverft.Routed.RequestFilters.
+The package remains pre-1.0, so APIs and configuration may change as the
+library evolves.
+
+Highlights
+----------
+- ASP.NET Core middleware for request filtering, evaluation, enforcement, and
+  filter-event storage.
+- Narrow capability dependencies for networking, deferred logging,
+  configuration binding, and middleware primitives.
+- Multi-targeted package support for .NET 8 and .NET 10.
+- Updated SQLite dependencies to avoid the known vulnerable native package.
+- Package metadata, embedded README, icon, and MIT license declaration.
+
+Release Channel
+---------------
+Production builds from the main branch are published to nuget.org.

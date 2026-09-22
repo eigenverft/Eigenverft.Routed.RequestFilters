@@ -1,15 +1,13 @@
 ﻿using System;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpResponseExtensions;
+using Eigenverft.WebLib.Middleware.Primitives;
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 
 using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -101,7 +99,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
                     return;
                 }
 
-                await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
+                await context.Response.WriteHtmlStatusResponseAsync(options.BlockStatusCode);
                 return;
             }
 
@@ -129,7 +127,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
                     return;
                 }
 
-                await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
+                await context.Response.WriteHtmlStatusResponseAsync(options.BlockStatusCode);
                 return;
             }
 

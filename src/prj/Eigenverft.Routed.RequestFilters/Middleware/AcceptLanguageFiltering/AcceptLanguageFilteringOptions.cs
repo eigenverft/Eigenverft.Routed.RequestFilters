@@ -1,8 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
-
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -13,8 +11,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
     /// </summary>
     /// <remarks>
     /// Defaults are defined via property initializers.
-    /// When configuration supplies a value (for example <c>Whitelist</c>), the binder replaces the array entirely.
-    /// To intentionally clear a default list from configuration, set it to an empty array (<c>[]</c>).
+    /// When configuration supplies one or more entries (for example in <c>Whitelist</c>), they replace the code defaults.
+    /// A missing or explicitly empty configured collection retains the code defaults; use code-based configuration to
+    /// clear a default list intentionally.
     /// <para>
     /// The observed value is the first <c>Accept-Language</c> header value (if present). Missing header is treated as <see cref="string.Empty"/>.
     /// </para>
@@ -56,7 +55,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
         /// Default: empty (allow behavior is controlled by <see cref="AllowUnmatchedRequests"/>).
         /// If configuration specifies <c>Whitelist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[] { "*" };
+        public List<string> Whitelist { get; set; } = new() { "*" };
 
         /// <summary>
         /// Gets or sets the list of explicitly forbidden Accept-Language patterns.
@@ -65,7 +64,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.AcceptLanguageFiltering
         /// Default: empty.
         /// If configuration specifies <c>Blacklist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[] { "", "*zh-CN*", "*zh-*", "*-CN*" };
+        public List<string> Blacklist { get; set; } = new() { "", "*zh-CN*", "*zh-*", "*-CN*" };
 
         /// <summary>
         /// Gets or sets a value indicating whether pattern matching is case sensitive.

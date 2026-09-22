@@ -2,10 +2,10 @@
 using System.Net;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpResponseExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IPAddressExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives;
+using Eigenverft.NetLib.Networking;
+using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 
 using Microsoft.AspNetCore.Http;
@@ -20,8 +20,8 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.DevelopmentUnlocker
     /// <remarks>
     /// Reviewer note: Two request shapes are supported:
     /// <list type="bullet">
-    /// <item><description><c>{EndpointPath}</c> unlocks the caller's normalized remote IP (from <see cref="RemoteIpAddressContextMiddleware"/>).</description></item>
-    /// <item><description><c>{EndpointPath}/{ip}</c> unlocks the specified IP (parsed and normalized via <see cref="IPAddressExtensions.GetIpInfo(System.Net.IPAddress?)"/>).</description></item>
+    /// <item><description><c>{EndpointPath}</c> unlocks the caller's normalized remote IP from <c>IClientNetworkFeature</c>.</description></item>
+    /// <item><description><c>{EndpointPath}/{ip}</c> unlocks the specified IP after parsing and canonical normalization.</description></item>
     /// </list>
     /// </remarks>
     public sealed class DevelopmentUnlocker
@@ -82,7 +82,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.DevelopmentUnlocker
                 return;
             }
 
-            // Reviewer note: caller IP is already normalized and stored by RemoteIpAddressContextMiddleware.
+            // The caller IP is normalized by ClientNetwork and formatted canonically for filter-event storage.
             string callerRemoteIp = context.GetRemoteIpAddress();
 
             string targetRemoteIp = callerRemoteIp;
@@ -103,7 +103,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.DevelopmentUnlocker
                             () => callerRemoteIp);
                     }
 
-                    await context.Response.WriteDefaultStatusCodeAnswerEx(StatusCodes.Status400BadRequest);
+                    await context.Response.WriteHtmlStatusResponseAsync(StatusCodes.Status400BadRequest);
                     return;
                 }
 
@@ -125,7 +125,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.DevelopmentUnlocker
 
             await _filteringEventStorage.RemoveByRemoteIpAddressAsync(targetRemoteIp);
 
-            await context.Response.WriteDefaultStatusCodeAnswerEx(StatusCodes.Status200OK);
+            await context.Response.WriteHtmlStatusResponseAsync(StatusCodes.Status200OK);
         }
 
         /// <summary>
@@ -218,11 +218,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.DevelopmentUnlocker
         }
 
         /// <summary>
-        /// Parses an IP string and normalizes it using <see cref="IPAddressExtensions.GetIpInfo(System.Net.IPAddress?)"/>.
+        /// Parses an IP string and normalizes it using NetLib.Networking.
         /// </summary>
         /// <remarks>
         /// Reviewer note: This is only used for the optional override segment. The caller IP is already normalized
-        /// by <see cref="RemoteIpAddressContextMiddleware"/>.
+        /// by the client-network feature.
         /// </remarks>
         /// <param name="rawSegment">Raw path segment that should represent an IP.</param>
         /// <param name="normalizedIp">Normalized IP suitable for storage comparison.</param>
@@ -251,13 +251,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.DevelopmentUnlocker
                 return false;
             }
 
-            var (_, remoteIp) = parsed.GetIpInfo(); // <-- here is your GetIpInfo() call
-            if (string.IsNullOrWhiteSpace(remoteIp))
-            {
-                return false;
-            }
-
-            normalizedIp = remoteIp!;
+            normalizedIp = parsed.ToCanonicalString();
             return true;
         }
     }

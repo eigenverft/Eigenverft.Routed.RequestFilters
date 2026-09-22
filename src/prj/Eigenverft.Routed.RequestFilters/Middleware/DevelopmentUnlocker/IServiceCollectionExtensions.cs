@@ -1,6 +1,6 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 

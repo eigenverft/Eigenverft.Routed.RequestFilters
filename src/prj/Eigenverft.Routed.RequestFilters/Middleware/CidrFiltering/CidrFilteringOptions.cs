@@ -1,7 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,8 +12,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.CidrFiltering
     /// </summary>
     /// <remarks>
     /// Defaults are defined via property initializers.
-    /// When configuration supplies a value (for example <c>Whitelist</c>), the binder replaces the array entirely.
-    /// To intentionally clear a default list from configuration, set it to an empty array (<c>[]</c>).
+    /// When configuration supplies one or more entries (for example in <c>Whitelist</c>), they replace the code defaults.
+    /// A missing or explicitly empty configured collection retains the code defaults; use code-based configuration to
+    /// clear a default list intentionally.
     /// <para>
     /// CIDR entries are expected in standard notation for IPv4 or IPv6, for example <c>192.168.1.0/24</c> or <c>2001:db8::/64</c>.
     /// The special entry <c>*</c> matches all IPs in the corresponding list.
@@ -61,7 +61,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.CidrFiltering
         /// Default: internal network ranges for typical intranet scenarios.
         /// If configuration specifies <c>Whitelist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[]
+        public List<string> Whitelist { get; set; } = new()
         {
             "10.0.0.0/8",
             "192.168.0.0/16",
@@ -75,7 +75,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.CidrFiltering
         /// Default: match-all deny (<c>*</c>) to enforce "intranet only".
         /// If configuration specifies <c>Blacklist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[]
+        public List<string> Blacklist { get; set; } = new()
         {
             "*"
         };

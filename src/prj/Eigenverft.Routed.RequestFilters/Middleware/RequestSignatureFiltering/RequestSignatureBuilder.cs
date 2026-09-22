@@ -131,7 +131,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
             input ??= string.Empty;
 
             var tokens = options.SignatureSanitizeTokens;
-            if (tokens == null || tokens.Length == 0)
+            if (tokens == null || tokens.Count == 0)
             {
                 return input;
             }

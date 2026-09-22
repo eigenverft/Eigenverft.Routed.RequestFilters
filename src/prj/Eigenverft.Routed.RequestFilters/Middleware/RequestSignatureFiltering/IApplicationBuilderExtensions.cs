@@ -1,14 +1,10 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Options;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.WebLib.ClientNetwork;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
 {
@@ -26,12 +22,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestSignatureFiltering)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<RequestSignatureFiltering>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestSignatureFiltering)}().");
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
-            return app.UseMiddleware<RequestSignatureFiltering>();
+            app.UseClientNetworkFeature();
+            return app.UseMiddlewareOnce<RequestSignatureFiltering>();
         }
 
         /// <summary>
@@ -46,16 +41,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
             ArgumentNullException.ThrowIfNull(app);
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestSignatureFiltering)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<RequestSignatureFiltering>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddRequestSignatureFiltering)}().");
 
-            IOptionsMonitor<RequestSignatureFilteringOptions> innerOptionsMonitor =
-                app.ApplicationServices.GetRequiredService<IOptionsMonitor<RequestSignatureFilteringOptions>>();
+            var decoratedOptionsMonitor = app.CreateUseSiteOptionsMonitor(additionalConfigure);
 
-            var decoratedOptionsMonitor = new ConfiguredOptionsMonitor<RequestSignatureFilteringOptions>(innerOptionsMonitor, additionalConfigure);
-
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
+            app.UseClientNetworkFeature();
             return app.UseMiddleware<RequestSignatureFiltering>(decoratedOptionsMonitor);
         }
     }

@@ -1,7 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,8 +12,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressFiltering
     /// </summary>
     /// <remarks>
     /// Defaults are defined via property initializers.
-    /// When configuration supplies a value (for example <c>Whitelist</c>), the binder replaces the array entirely.
-    /// To intentionally clear a default list from configuration, set it to an empty array (<c>[]</c>).
+    /// When configuration supplies one or more entries (for example in <c>Whitelist</c>), they replace the code defaults.
+    /// A missing or explicitly empty configured collection retains the code defaults; use code-based configuration to
+    /// clear a default list intentionally.
     /// </remarks>
     public sealed class RemoteIpAddressFilteringOptions
     {
@@ -34,7 +34,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressFiltering
         /// Default: common private/local IPv4 ranges.
         /// If configuration specifies <c>Whitelist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[]
+        public List<string> Whitelist { get; set; } = new()
         {
             "127.*",
             "10.*",
@@ -66,7 +66,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressFiltering
         /// <remarks>
         /// Default: one example entry. If configuration specifies <c>Blacklist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[] { "8.8.8.8" };
+        public List<string> Blacklist { get; set; } = new() { "8.8.8.8" };
 
         /// <summary>
         /// Gets or sets a value indicating whether ip address pattern matching is case sensitive.

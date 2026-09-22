@@ -5,13 +5,15 @@
 
 using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.HttpMethodFiltering
 {
@@ -40,7 +42,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HttpMethodFiltering
 
             services
                 .AddOptions<HttpMethodFilteringOptions>()
-                .BindConfiguration(nameof(HttpMethodFilteringOptions));
+                .BindReplacingCollectionDefaults(
+                    nameof(HttpMethodFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -78,9 +82,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HttpMethodFiltering
 
             AddInfrastructure(services);
 
+            IConfigurationSection section = configuration.GetSection(nameof(HttpMethodFilteringOptions));
             services
                 .AddOptions<HttpMethodFilteringOptions>()
-                .Bind(configuration.GetSection(nameof(HttpMethodFilteringOptions)));
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<HttpMethodFilteringOptions>>(
+                new ConfigurationChangeTokenSource<HttpMethodFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

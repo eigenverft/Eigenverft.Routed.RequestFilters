@@ -2,7 +2,7 @@
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;

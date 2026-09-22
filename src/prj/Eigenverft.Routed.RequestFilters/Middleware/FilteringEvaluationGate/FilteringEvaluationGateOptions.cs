@@ -64,14 +64,14 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
 
         /// <summary>
         /// Gets or sets a value indicating whether the middleware should write the
-        /// <c>MarkedAsBlockedByEvaluator</c> request marker to <see cref="HttpContext.Items"/> when the evaluator
-        /// indicates a block decision.
+        /// <c>MarkedAsBlockedByEvaluator</c> typed request feature when the evaluator indicates a block decision
+        /// and the request continues in pass-through mode.
         /// </summary>
         /// <remarks>
-        /// When enabled and the evaluator indicates a block, the middleware sets the marker via
+        /// When enabled, the evaluator indicates a block, and <see cref="AllowBlockedRequests"/> permits the request
+        /// to continue, the middleware sets the marker via
         /// <see cref="FilteringEvaluationGateHttpContextMarkers.SetMarkedAsBlockedByEvaluator(HttpContext,bool)"/>.
-        /// The marker is written regardless of <see cref="AllowBlockedRequests"/> so downstream middleware can
-        /// react consistently in log-only rollout mode.
+        /// Downstream middleware can then react consistently in log-only rollout mode.
         /// </remarks>
         public bool EmitMarkedAsBlockedByEvaluator { get; set; } = false;
     }

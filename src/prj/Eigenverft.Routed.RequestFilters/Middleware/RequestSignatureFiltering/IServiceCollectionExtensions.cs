@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
 {
@@ -28,7 +30,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<RequestSignatureFilteringOptions>().BindConfiguration(nameof(RequestSignatureFilteringOptions));
+            services
+                .AddOptions<RequestSignatureFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(RequestSignatureFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -64,7 +70,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.RequestSignatureFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<RequestSignatureFilteringOptions>().Bind(configuration.GetSection(nameof(RequestSignatureFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(RequestSignatureFilteringOptions));
+            services
+                .AddOptions<RequestSignatureFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<RequestSignatureFilteringOptions>>(
+                new ConfigurationChangeTokenSource<RequestSignatureFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

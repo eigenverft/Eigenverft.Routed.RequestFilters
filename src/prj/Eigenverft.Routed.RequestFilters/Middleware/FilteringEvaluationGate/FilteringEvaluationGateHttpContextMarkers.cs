@@ -1,13 +1,13 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpContextExtensions;
+using Eigenverft.WebLib.Middleware.Primitives.Features;
 
 using Microsoft.AspNetCore.Http;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
 {
     /// <summary>
-    /// Provides typed access to the per-request evaluator decision marker stored in <see cref="HttpContext.Items"/>.
+    /// Provides typed access to the per-request evaluator decision feature.
     /// </summary>
     /// <remarks>
     /// The value is request-scoped and intended for downstream middleware (for example, redirect or response shaping)
@@ -16,8 +16,6 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
     /// </remarks>
     public static class FilteringEvaluationGateHttpContextMarkers
     {
-        private const string EvaluatorWouldBlockKey = "Eigenverft.Routed.RequestFilters.FilteringEvaluationGate.MarkedAsBlockedByEvaluator";
-
         /// <summary>
         /// Sets a per-request marker indicating whether the evaluator would block the current request.
         /// </summary>
@@ -26,7 +24,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
         public static void SetMarkedAsBlockedByEvaluator(this HttpContext context, bool evaluatorWouldBlock)
         {
             ArgumentNullException.ThrowIfNull(context);
-            context.SetContextItem(EvaluatorWouldBlockKey, evaluatorWouldBlock);
+            context.SetFeature(new FilteringEvaluationFeature(evaluatorWouldBlock));
         }
 
         /// <summary>
@@ -40,7 +38,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
         public static bool GetMarkedAsBlockedByEvaluator(this HttpContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
-            return context.GetContextItemOrDefault(EvaluatorWouldBlockKey, defaultValue: false);
+            return context.GetFeature<FilteringEvaluationFeature>()?.EvaluatorWouldBlock ?? false;
         }
 
         /// <summary>
@@ -53,14 +51,24 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            if (context.TryGetContextItem<bool>(EvaluatorWouldBlockKey, out var value))
+            if (context.TryGetFeature<FilteringEvaluationFeature>(out var feature))
             {
-                evaluatorWouldBlock = value;
+                evaluatorWouldBlock = feature.EvaluatorWouldBlock;
                 return true;
             }
 
             evaluatorWouldBlock = false;
             return false;
+        }
+
+        private sealed class FilteringEvaluationFeature
+        {
+            internal FilteringEvaluationFeature(bool evaluatorWouldBlock)
+            {
+                EvaluatorWouldBlock = evaluatorWouldBlock;
+            }
+
+            internal bool EvaluatorWouldBlock { get; }
         }
     }
 }

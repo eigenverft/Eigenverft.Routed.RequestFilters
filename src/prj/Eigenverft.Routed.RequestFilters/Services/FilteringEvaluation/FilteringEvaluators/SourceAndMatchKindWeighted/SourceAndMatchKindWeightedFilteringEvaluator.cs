@@ -2,7 +2,7 @@
 using System.Globalization;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 
 using Microsoft.Extensions.Options;

@@ -1,7 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,8 +12,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
     /// </summary>
     /// <remarks>
     /// Defaults are defined via property initializers.
-    /// When configuration supplies a value (for example <c>Whitelist</c>), the binder replaces the array entirely.
-    /// To intentionally clear a default list from configuration, set it to an empty array (<c>[]</c>).
+    /// When configuration supplies one or more entries (for example in <c>Whitelist</c>), they replace the code defaults.
+    /// A missing or explicitly empty configured collection retains the code defaults; use code-based configuration to
+    /// clear a default list intentionally.
     /// <para>
     /// Default blacklist contains common scanner / IOT / bot probe segments that are frequently requested on public servers.
     /// These defaults are intentionally conservative (high-signal, low-false-positive) and can be replaced via configuration binding.
@@ -57,7 +57,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
         /// Default: empty (allow behavior is controlled by <see cref="AllowUnmatchedRequests"/>).
         /// If configuration specifies <c>Whitelist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = new[] { "*" };
+        public List<string> Whitelist { get; set; } = new() { "*" };
 
         /// <summary>
         /// Gets or sets the list of explicitly forbidden segment patterns.
@@ -66,7 +66,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UriSegmentFiltering
         /// Default: common high-frequency probe segments (scanners/bots/IOT).
         /// If configuration specifies <c>Blacklist</c>, it fully replaces this value.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = new[]
+        public List<string> Blacklist { get; set; } = new()
         {
             // WordPress probes
             "wp-admin",

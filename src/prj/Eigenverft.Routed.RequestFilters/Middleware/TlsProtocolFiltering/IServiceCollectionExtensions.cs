@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
 {
@@ -33,7 +35,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<TlsProtocolFilteringOptions>().BindConfiguration(nameof(TlsProtocolFilteringOptions));
+            services
+                .AddOptions<TlsProtocolFilteringOptions>()
+                .BindReplacingCollectionDefaults(
+                    nameof(TlsProtocolFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -71,7 +77,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.TlsProtocolFiltering
 
             AddInfrastructure(services);
 
-            services.AddOptions<TlsProtocolFilteringOptions>().Bind(configuration.GetSection(nameof(TlsProtocolFilteringOptions)));
+            IConfigurationSection section = configuration.GetSection(nameof(TlsProtocolFilteringOptions));
+            services
+                .AddOptions<TlsProtocolFilteringOptions>()
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<TlsProtocolFilteringOptions>>(
+                new ConfigurationChangeTokenSource<TlsProtocolFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {

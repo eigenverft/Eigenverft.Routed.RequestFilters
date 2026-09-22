@@ -44,6 +44,13 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent
     /// </summary>
     public sealed class FilteringEventBySourceAndMatchAggregate
     {
+        /// <summary>
+        /// Initializes a new aggregate row for one event source and match kind.
+        /// </summary>
+        /// <param name="remoteIpAddress">The normalized remote IP address.</param>
+        /// <param name="eventSource">The source middleware name.</param>
+        /// <param name="matchKind">The aggregate's match kind.</param>
+        /// <param name="count">The number of matching events.</param>
         public FilteringEventBySourceAndMatchAggregate(string remoteIpAddress, string eventSource, FilterMatchKind matchKind, long count)
         {
             RemoteIpAddress = remoteIpAddress ?? string.Empty;
@@ -52,9 +59,13 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent
             Count = count;
         }
 
+        /// <summary>Gets the normalized remote IP address.</summary>
         public string RemoteIpAddress { get; }
+        /// <summary>Gets the source middleware name.</summary>
         public string EventSource { get; }
+        /// <summary>Gets the aggregated match kind.</summary>
         public FilterMatchKind MatchKind { get; }
+        /// <summary>Gets the number of matching events.</summary>
         public long Count { get; }
     }
 
@@ -63,6 +74,12 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent
     /// </summary>
     public sealed class FilteringEventBySourceAggregate
     {
+        /// <summary>
+        /// Initializes a new aggregate row for one event source.
+        /// </summary>
+        /// <param name="remoteIpAddress">The normalized remote IP address.</param>
+        /// <param name="eventSource">The source middleware name.</param>
+        /// <param name="count">The number of matching events.</param>
         public FilteringEventBySourceAggregate(string remoteIpAddress, string eventSource, long count)
         {
             RemoteIpAddress = remoteIpAddress ?? string.Empty;
@@ -70,8 +87,11 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent
             Count = count;
         }
 
+        /// <summary>Gets the normalized remote IP address.</summary>
         public string RemoteIpAddress { get; }
+        /// <summary>Gets the source middleware name.</summary>
         public string EventSource { get; }
+        /// <summary>Gets the number of matching events.</summary>
         public long Count { get; }
     }
 
@@ -80,6 +100,12 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent
     /// </summary>
     public sealed class FilteringEventByMatchAggregate
     {
+        /// <summary>
+        /// Initializes a new aggregate row for one match kind.
+        /// </summary>
+        /// <param name="remoteIpAddress">The normalized remote IP address.</param>
+        /// <param name="matchKind">The aggregate's match kind.</param>
+        /// <param name="count">The number of matching events.</param>
         public FilteringEventByMatchAggregate(string remoteIpAddress, FilterMatchKind matchKind, long count)
         {
             RemoteIpAddress = remoteIpAddress ?? string.Empty;
@@ -87,8 +113,11 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvent
             Count = count;
         }
 
+        /// <summary>Gets the normalized remote IP address.</summary>
         public string RemoteIpAddress { get; }
+        /// <summary>Gets the aggregated match kind.</summary>
         public FilterMatchKind MatchKind { get; }
+        /// <summary>Gets the number of matching events.</summary>
         public long Count { get; }
     }
 }

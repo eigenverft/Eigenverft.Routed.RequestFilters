@@ -1,12 +1,14 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
+using Eigenverft.NetLib.Configuration.Binding;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvent.FilteringStorage.NullFiltering;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 {
@@ -30,7 +32,9 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 
             services
                 .AddOptions<BrowserBootstrapFilteringOptions>()
-                .BindConfiguration(nameof(BrowserBootstrapFilteringOptions));
+                .BindReplacingCollectionDefaults(
+                    nameof(BrowserBootstrapFilteringOptions),
+                    EmptyCollectionBehavior.UseCodeDefaults);
 
             return services;
         }
@@ -66,9 +70,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 
             AddInfrastructure(services);
 
+            IConfigurationSection section = configuration.GetSection(nameof(BrowserBootstrapFilteringOptions));
             services
                 .AddOptions<BrowserBootstrapFilteringOptions>()
-                .Bind(configuration.GetSection(nameof(BrowserBootstrapFilteringOptions)));
+                .Configure(options => section.BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults));
+            services.AddSingleton<IOptionsChangeTokenSource<BrowserBootstrapFilteringOptions>>(
+                new ConfigurationChangeTokenSource<BrowserBootstrapFilteringOptions>(Options.DefaultName, section));
 
             if (manualConfigure != null)
             {
@@ -80,6 +87,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
 
         private static void AddInfrastructure(IServiceCollection services)
         {
+            services.AddDataProtection();
             services.TryAddSingleton(typeof(IDeferredLogger<>), typeof(DeferredLogger<>));
             services.TryAddSingleton<IFilteringEventStorage, NullFilteringEventStorage>();
             services.AddOptions();

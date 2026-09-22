@@ -1,11 +1,10 @@
 ﻿using System;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.StringExtensions;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;

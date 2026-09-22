@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;

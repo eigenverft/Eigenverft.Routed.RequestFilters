@@ -1,17 +1,11 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Options;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
-using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation;
-using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators;
-
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.WebLib.ClientNetwork;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
+
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.CidrFiltering
 {
@@ -29,10 +23,10 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.CidrFiltering
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddCidrFiltering)}().", typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddCidrFiltering)}().", typeof(IDeferredLogger<CidrFiltering>));
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
-            return app.UseMiddleware<CidrFiltering>();
+            app.UseClientNetworkFeature();
+            return app.UseMiddlewareOnce<CidrFiltering>();
         }
 
         /// <summary>
@@ -47,12 +41,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.CidrFiltering
             ArgumentNullException.ThrowIfNull(app);
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
-            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddCidrFiltering)}().", typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered($"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddCidrFiltering)}().", typeof(IDeferredLogger<CidrFiltering>));
 
-            IOptionsMonitor<CidrFilteringOptions> innerOptionsMonitor = app.ApplicationServices.GetRequiredService<IOptionsMonitor<CidrFilteringOptions>>();
-            var decoratedOptionsMonitor = new ConfiguredOptionsMonitor<CidrFilteringOptions>(innerOptionsMonitor, additionalConfigure);
+            var decoratedOptionsMonitor = app.CreateUseSiteOptionsMonitor(additionalConfigure);
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
+            app.UseClientNetworkFeature();
             return app.UseMiddleware<CidrFiltering>(decoratedOptionsMonitor);
         }
     }

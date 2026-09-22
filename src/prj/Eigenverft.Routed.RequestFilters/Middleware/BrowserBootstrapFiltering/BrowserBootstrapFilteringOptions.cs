@@ -1,6 +1,5 @@
 ﻿using System;
-
-using Eigenverft.Routed.RequestFilters.Options;
+using System.Collections.Generic;
 
 using Microsoft.Extensions.Logging;
 
@@ -62,7 +61,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
         /// Default: <c>/</c> and <c>/index.html</c>.
         /// </para>
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> HtmlProtectedBootstrapScopePathPatterns { get; set; } = new[] { "/", "/index.html" };
+        public List<string> HtmlProtectedBootstrapScopePathPatterns { get; set; } = new() { "/", "/index.html" };
 
         /// <summary>
         /// Gets or sets the cookie name used as the bootstrap signal.

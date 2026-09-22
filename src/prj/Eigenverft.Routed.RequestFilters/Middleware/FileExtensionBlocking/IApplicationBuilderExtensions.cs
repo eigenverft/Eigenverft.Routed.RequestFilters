@@ -1,13 +1,9 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Options;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.FileExtensionBlocking
 {
@@ -26,11 +22,10 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FileExtensionBlocking
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddFileExtensionBlocking)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<FileExtensionBlocking>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddFileExtensionBlocking)}().");
 
-            return app.UseMiddleware<FileExtensionBlocking>();
+            return app.UseMiddlewareOnce<FileExtensionBlocking>();
         }
 
         /// <summary>
@@ -46,12 +41,10 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FileExtensionBlocking
             ArgumentNullException.ThrowIfNull(app);
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddFileExtensionBlocking)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<FileExtensionBlocking>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddFileExtensionBlocking)}().");
 
-            IOptionsMonitor<FileExtensionBlockingOptions> innerOptionsMonitor = app.ApplicationServices.GetRequiredService<IOptionsMonitor<FileExtensionBlockingOptions>>();
-            var decoratedOptionsMonitor = new ConfiguredOptionsMonitor<FileExtensionBlockingOptions>(innerOptionsMonitor, additionalConfigure);
+            var decoratedOptionsMonitor = app.CreateUseSiteOptionsMonitor(additionalConfigure);
 
             return app.UseMiddleware<FileExtensionBlocking>(decoratedOptionsMonitor);
         }

@@ -1,6 +1,7 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.NetLib.Configuration.Binding;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators.NullFilteringEvaluation;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators.SimpleFilteringScoreEvaluator;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.FilteringEvaluators.SourceAndMatchKindWeighted;
@@ -285,7 +286,9 @@ namespace Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation.Filterin
             public void Configure(TOptions options)
             {
                 IConfiguration configurationToUse = _binding.ConfigurationOverride ?? _configurationFromDi;
-                configurationToUse.GetSection(_binding.SectionPath).Bind(options);
+                configurationToUse
+                    .GetSection(_binding.SectionPath)
+                    .BindReplacingCollectionDefaults(options, EmptyCollectionBehavior.UseCodeDefaults);
             }
         }
 

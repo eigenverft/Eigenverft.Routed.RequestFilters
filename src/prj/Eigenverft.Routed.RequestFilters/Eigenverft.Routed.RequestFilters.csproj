@@ -1,39 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project>
+	<Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
-	<!-- Branding information -->
-	<PropertyGroup>
-		<Branding>Eigenverft</Branding>
-	</PropertyGroup>
-
-	<!-- General build settings: defines the output type and target frameworks -->
+	<!-- General build settings: defines the output type and target framework -->
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<TargetFrameworks>net6.0;net7.0;net8.0;net10.0</TargetFrameworks>
-		<SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
-		<CheckEolTargetFramework>false</CheckEolTargetFramework>
-		<InvariantGlobalization>true</InvariantGlobalization>
-		<DisableMSBuildAssemblyCopyCheck>true</DisableMSBuildAssemblyCopyCheck>
-	</PropertyGroup>
-
-	<!-- Packaging and publish configuration -->
-	<PropertyGroup>
-		<IsPackable>true</IsPackable>
-		<IsPublishable>false</IsPublishable>
-		<IsTestProject>false</IsTestProject>
-		<PackAsTool>false</PackAsTool>
-		<IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
-		<StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
-		<EnableDefaultContentItems>false</EnableDefaultContentItems>
-	</PropertyGroup>
-
-	<!-- Versioning details -->
-	<PropertyGroup>
-		<VersionBuild>0</VersionBuild>
-		<VersionMajor>1</VersionMajor>
-		<VersionMinor>0</VersionMinor>
-		<VersionRevision>0</VersionRevision>
-		<AssemblyVersion>$(VersionBuild).$(VersionMajor).$(VersionMinor).$(VersionRevision)</AssemblyVersion>
-		<Version>$(VersionBuild).$(VersionMajor).$(VersionMinor).$(VersionRevision)$(VersionSuffix)</Version>
+		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
 	</PropertyGroup>
 
 	<!-- C# language features and debugging configuration -->
@@ -44,78 +15,140 @@
 		<LangVersion>latest</LangVersion>
 	</PropertyGroup>
 
-	<!-- Company and copyright information -->
+	<!-- XML documentation file -->
 	<PropertyGroup>
-		<Copyright>Copyright (c) 2025 $(Branding)</Copyright>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<!-- GlobalAnalyzerConfigFiles is what Roslyn reads. Visible=false so VS does not show that item twice. -->
+	<!-- None+Link is Solution Explorer only. Disk path stays next to the csproj: Properties/ would change analyzer scope. -->
+	<!-- EnforceCodeStyleInBuild is required or IDE1006 stays IDE-only and `dotnet build` ignores the file. -->
+	<!-- OptimizeImplicitlyTriggeredBuild=false: VS Test Explorer / F5 must not skip analyzers (dotnet test does not). -->
+	<PropertyGroup>
+		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+		<OptimizeImplicitlyTriggeredBuild>false</OptimizeImplicitlyTriggeredBuild>
+	</PropertyGroup>
+	<ItemGroup>
+		<GlobalAnalyzerConfigFiles Include="$(MSBuildProjectDirectory)\.project.editor.globalconfig" Visible="false" />
+		<None Remove=".project.editor.globalconfig" />
+		<None Include=".project.editor.globalconfig" Link="Properties\.project.editor.globalconfig" />
+	</ItemGroup>
+
+	<!-- SDK CA rule set. Always written; omitted AnalysisMode switch means Recommended. -->
+	<PropertyGroup>
+		<AnalysisMode>Recommended</AnalysisMode>
+	</PropertyGroup>
+
+	<!-- Restore NuGetAudit is already on. High (NU1903) and critical (NU1904) fail restore. Low/moderate stay warnings. -->
+	<PropertyGroup>
+		<WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
+	</PropertyGroup>
+
+	<!-- Packaging and publish configuration -->
+	<!-- EnablePackageValidation: TFM/runtime holes on pack. No baseline at generate; set PackageValidationBaselineVersion after the first nuget.org publish. -->
+	<PropertyGroup>
+		<IsPackable>true</IsPackable>
+		<IsPublishable>false</IsPublishable>
+		<PublishRelease>false</PublishRelease>
+		<IsTestProject>false</IsTestProject>
+		<PackAsTool>false</PackAsTool>
+		<EnablePackageValidation>true</EnablePackageValidation>
+	</PropertyGroup>
+
+	<!-- SDK defaults stay. CheckEol: true for exe, skipped for Library. InvariantGlobalization unset = cultures on. -->
+	<PropertyGroup>
+		<CheckEolTargetFramework>$(CheckEolTargetFramework)</CheckEolTargetFramework>
+		<InvariantGlobalization>$(InvariantGlobalization)</InvariantGlobalization>
+	</PropertyGroup>
+
+	<!-- Versioning: Nerdbank -->
+	<PropertyGroup>
+		<GitVersionBaseDirectory>$(MSBuildProjectDirectory)\Properties</GitVersionBaseDirectory>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94">
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Eigenverft.NetLib.Configuration.Binding" Version="1.0.0.6" />
+		<PackageReference Include="Eigenverft.NetLib.Logging.Deferred" Version="1.0.0.3" />
+		<PackageReference Include="Eigenverft.NetLib.Networking" Version="1.0.0.3" />
+		<PackageReference Include="Eigenverft.WebLib.ClientNetwork" Version="1.0.0.4" />
+		<PackageReference Include="Eigenverft.WebLib.Middleware.Primitives" Version="1.0.0.3" />
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+	</ItemGroup>
+
+	<!-- Package metadata -->
+	<!-- https://learn.microsoft.com/en-us/nuget/create-packages/package-authoring-best-practices -->
+	<PropertyGroup>
+		<Authors>Eigenverft</Authors>
+		<Owners>Eigenverft</Owners>
 		<Company></Company>
-	</PropertyGroup>
-
-	<PropertyGroup Condition="'$(PackAsTool)' == 'true' ">
-		<ToolCommandName>RequestFilters</ToolCommandName>
-	</PropertyGroup>
-
-	<PropertyGroup Condition="'$(Stage)' == 'pack'">
-		<Authors>$(Branding)</Authors>
-		<Owners>$(Branding)</Owners>
-		<PackageId>$(AssemblyName)</PackageId>
-		<PackageTags>$(Branding);dotnet;routed;requestFilters</PackageTags>
+		<Copyright>Copyright © 2026 Eigenverft</Copyright>
+		<PackageId>Eigenverft.Routed.RequestFilters</PackageId>
+		<PackageTags>dotnet;aspnet-core;web;middleware;request-filtering;security;sqlite;eigenverft</PackageTags>
 		<PackageProjectUrl>https://github.com/eigenverft/Eigenverft.Routed.RequestFilters</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/eigenverft/Eigenverft.Routed.RequestFilters</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
-		<Description>
-			<![CDATA[
-			Eigenverft.Routed.RequestFilters is a multi-purpose request filtering library.
-			]]>
-		</Description>
-		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<!-- NuGet gallery blurb. CDATA is optional and keeps multiline text. -->
+		<Description><![CDATA[ASP.NET Core request filtering, filter-event storage, and evaluation middleware for configurable request policies.]]></Description>
+		<PackageReadmeFile>Readme.md</PackageReadmeFile>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
-		<PackageIcon>eigenverft-logo-v7-harbor-square_128_128.png</PackageIcon>
-		<PackageReleaseNotes>$([System.IO.File]::ReadAllText("$(MSBuildThisFileDirectory)AddPackageFiles\ReleaseNotes.txt"))</PackageReleaseNotes>
+		<PackageIcon>Icon-128x128.png</PackageIcon>
+		<!-- Read multiline release notes from a separate source file so this project file stays compact. -->
+		<PackageReleaseNotes>$([System.IO.File]::ReadAllText("$(MSBuildProjectDirectory)\Properties\NugetMetadata\PackageReleaseNotes.txt"))</PackageReleaseNotes>
 	</PropertyGroup>
 
-	<!-- In pack add additional files to the package root directory of the nuget. -->
-	<ItemGroup Condition="'$(Stage)' == 'pack'">
-		<None Include="../../../README.NUGET.md" Pack="true" PackagePath="README.md" />
-		<None Include="$(MSBuildProjectDirectory)\AddPackageFiles\**\*" Exclude="$(MSBuildProjectDirectory)\AddPackageFiles\ReleaseNotes.txt" Pack="true" PackagePath="" />
-	</ItemGroup>
+	<!-- NuGet package metadata from Properties/NugetMetadata is packed as package content. PackageReleaseNotes.txt is consumed for PackageReleaseNotes and is not packed as a loose file. -->
+	<!-- The standard MIT expression is the package license; metadata assets are packed at the nupkg root. -->
 	<ItemGroup>
-	  <PackageReference Include="CommunityToolkit.Diagnostics" Version="8.4.0" />
-	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
-	  <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
-	  <PackageReference Include="Serilog" Version="4.3.0" />
-	  <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
-	  <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
+		<None Include="$(MSBuildProjectDirectory)\Properties\NugetMetadata\**\*" Pack="true" PackagePath="" Exclude="$(MSBuildProjectDirectory)\Properties\NugetMetadata\License.txt;$(MSBuildProjectDirectory)\Properties\NugetMetadata\PackageReleaseNotes.txt" />
 	</ItemGroup>
 
-	<PropertyGroup Condition="'$(Stage)' == 'publish'">
-		<!-- Specify the target runtime; adjust as needed (e.g., win-x86, linux-x64) -->
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+	<PropertyGroup>
+		<PackageOutputPath Condition=" '$(PackageOutputPath)' == '' ">$(MSBuildProjectDirectory)\bin\Pack</PackageOutputPath>
+	</PropertyGroup>
 
+	<!-- Publish behavior keep slim for library specs -->
+	<PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+		<!-- Flat publish output -->
+		<PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildProjectDirectory)\bin\Publish\</PublishDir>
 		<PublishAot>false</PublishAot>
 		<PublishTrimmed>false</PublishTrimmed>
-		<SelfContained>true</SelfContained>
-		<!-- Enable single-file publish -->
+	</PropertyGroup>
+
+	<!-- Publish behavior for executable future useage program main etc -->
+	<PropertyGroup Condition="'$(_IsPublishing)' == 'true' and '$(OutputType)' != 'Library'">
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<PublishSelfContained>true</PublishSelfContained>
 		<PublishSingleFile>true</PublishSingleFile>
-		<!-- Enable compression to reduce the size of the single-file executable -->
 		<EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-		<!-- Ensure native libraries are extracted at runtime -->
 		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 	</PropertyGroup>
 
-	<Target Name="PublishToolNameTo" AfterTargets="Publish" Condition="'$(PackAsTool)' == 'true' ">
-		<PropertyGroup>
-			<NewExeName>$(ToolCommandName).exe</NewExeName>
-		</PropertyGroup>
+	<!-- Keep Git configuration on disk without showing it as a project item -->
+	<ItemGroup>
+		<None Remove=".gitignore" />
+	</ItemGroup>
 
-		<!-- Locate the original exe output -->
-		<ItemGroup>
-			<PublishedExe Include="$(PublishDir)$(AssemblyName).exe" Condition="Exists('$(PublishDir)$(AssemblyName).exe')" />
-		</ItemGroup>
-		<Message Text="Renaming $(AssemblyName).exe to $(NewExeName) in $(PublishDir)" Importance="High" />
-		<Move SourceFiles="@(PublishedExe)" DestinationFiles="$(PublishDir)$(NewExeName)" />
-	</Target>
+	<!-- Disk path stays .config/: that is where `dotnet tool` looks. Link is Solution Explorer only. -->
+	<ItemGroup>
+		<None Remove=".config\dotnet-tools.json" />
+		<None Include=".config\dotnet-tools.json" Link="Properties\dotnet-tools.json" />
+	</ItemGroup>
 
-
-	<Import Project="$(MSBuildProjectDirectory)\BuildTargets\BuildInfo.targets" Condition="Exists('$(MSBuildProjectDirectory)\BuildTargets\BuildInfo.targets')" />
+	<!-- Source Link git state as properties (SDK 8+). Target hooks GenerateAssemblyInfo. -->
+	<Import Project="Properties/Build/SourceControlState.targets" />
+	<!--
+    Must stay last. This import is Sdk.targets plus the outer Publish dispatch.
+    The SDK reads properties and items while it loads (EnforceCodeStyleInBuild,
+    GlobalAnalyzerConfigFiles, AnalysisMode, EnablePackageValidation, WarningsAsErrors, publish). Anything after this line is after the
+    SDK and is ignored for that. Project Sdk="..." would append Sdk.targets
+    after this file and overwrite the Publish override.
+  -->
+	<Import Project="Properties/Build/ImportSdkTargets.targets" />
 
 </Project>

@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Threading.Tasks;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.HttpResponseExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives;
+using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
+using Eigenverft.NetLib.Logging.Deferred;
 using Eigenverft.Routed.RequestFilters.Services.FilteringEvaluation;
 
 using Microsoft.AspNetCore.Http;
@@ -32,7 +32,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
     /// <para>
     /// When enabled via <see cref="FilteringEvaluationGateOptions.EmitMarkedAsBlockedByEvaluator"/>, and when the request
     /// is allowed to proceed while the evaluator would have blocked it, the middleware sets a request marker in
-    /// <see cref="HttpContext.Items"/> using <see cref="FilteringEvaluationGateHttpContextMarkers.SetMarkedAsBlockedByEvaluator(HttpContext,bool)"/>.
+    /// a typed request feature using <see cref="FilteringEvaluationGateHttpContextMarkers.SetMarkedAsBlockedByEvaluator(HttpContext,bool)"/>.
     /// This enables downstream middleware (for example, proxy routing, redirects, or response shaping) to react without
     /// relying on re-running the evaluator.
     /// </para>
@@ -110,7 +110,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.FilteringEvaluationGate
             // Short-circuit when blocked (unless allow-through is enabled).
             if (!isAllowed)
             {
-                await context.Response.WriteDefaultStatusCodeAnswerEx(options.BlockStatusCode);
+                await context.Response.WriteHtmlStatusResponseAsync(options.BlockStatusCode);
                 return;
             }
 

@@ -1,7 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 using Eigenverft.Routed.RequestFilters.Middleware.Abstractions;
-using Eigenverft.Routed.RequestFilters.Options;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -32,7 +31,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HostNameFiltering
         /// <remarks>
         /// Defaults to an empty list. If configuration omits this property, the default remains in effect.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Whitelist { get; set; } = Array.Empty<string>();
+        public List<string> Whitelist { get; set; } = new();
 
         /// <summary>
         /// Gets or sets the list of explicitly forbidden host name patterns.
@@ -40,7 +39,7 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.HostNameFiltering
         /// <remarks>
         /// Defaults to an empty list. If configuration omits this property, the default remains in effect.
         /// </remarks>
-        public OptionsConfigOverridesDefaultsList<string> Blacklist { get; set; } = Array.Empty<string>();
+        public List<string> Blacklist { get; set; } = new();
 
         /// <summary>
         /// Gets or sets a value indicating whether host name pattern matching is case sensitive.

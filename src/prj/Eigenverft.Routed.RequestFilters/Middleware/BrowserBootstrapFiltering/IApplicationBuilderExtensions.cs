@@ -1,9 +1,7 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Builder;
 
@@ -26,12 +24,10 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.BrowserBootstrapFiltering
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddBrowserBootstrapFiltering)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<BrowserBootstrapFiltering>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddBrowserBootstrapFiltering)}().");
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
-            return app.UseMiddleware<BrowserBootstrapFiltering>();
+            return app.UseMiddlewareOnce<BrowserBootstrapFiltering>();
         }
     }
 }

@@ -1,14 +1,10 @@
 ﻿using System;
 
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IApplicationBuilderExtensions;
-using Eigenverft.Routed.RequestFilters.GenericExtensions.IServiceProviderExtensions;
-using Eigenverft.Routed.RequestFilters.Middleware.RemoteIpAddressContext;
-using Eigenverft.Routed.RequestFilters.Options;
-using Eigenverft.Routed.RequestFilters.Services.DeferredLogger;
+using Eigenverft.WebLib.Middleware.Primitives.Infrastructure;
+using Eigenverft.WebLib.ClientNetwork;
+using Eigenverft.NetLib.Logging.Deferred;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
 {
@@ -26,12 +22,11 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddUserAgentFiltering)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<UserAgentFiltering>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddUserAgentFiltering)}().");
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
-            return app.UseMiddleware<UserAgentFiltering>();
+            app.UseClientNetworkFeature();
+            return app.UseMiddlewareOnce<UserAgentFiltering>();
         }
 
         /// <summary>
@@ -46,14 +41,12 @@ namespace Eigenverft.Routed.RequestFilters.Middleware.UserAgentFiltering
             ArgumentNullException.ThrowIfNull(app);
             ArgumentNullException.ThrowIfNull(additionalConfigure);
 
-            app.ApplicationServices.EnsureServicesRegistered(
-                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddUserAgentFiltering)}().",
-                typeof(IDeferredLogger<>));
+            app.ApplicationServices.EnsureServicesRegistered<IDeferredLogger<UserAgentFiltering>>(
+                $"Make sure to register deferred logging via services.{nameof(IServiceCollectionExtensions.AddUserAgentFiltering)}().");
 
-            IOptionsMonitor<UserAgentFilteringOptions> innerOptionsMonitor = app.ApplicationServices.GetRequiredService<IOptionsMonitor<UserAgentFilteringOptions>>();
-            var decoratedOptionsMonitor = new ConfiguredOptionsMonitor<UserAgentFilteringOptions>(innerOptionsMonitor, additionalConfigure);
+            var decoratedOptionsMonitor = app.CreateUseSiteOptionsMonitor(additionalConfigure);
 
-            app.UseMiddlewareOnce<RemoteIpAddressContextMiddleware>();
+            app.UseClientNetworkFeature();
             return app.UseMiddleware<UserAgentFiltering>(decoratedOptionsMonitor);
         }
     }

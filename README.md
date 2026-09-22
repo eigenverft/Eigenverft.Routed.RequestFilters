@@ -9,6 +9,28 @@ Composable request filtering, filter evaluation, enforcement, and filter-event s
 > [!IMPORTANT]
 > This project is currently **pre-1.0**. Public APIs, option names, defaults, and configuration behavior may change between preview releases.
 
+## ⚠️ Migration notice — filter-only release
+
+This release is a **breaking change** for consumers upgrading from the former
+broader package. `Eigenverft.Routed.RequestFilters` now contains request
+filtering, filter evaluation/enforcement, filter events, and filter-owned event
+storage only. It is not a drop-in replacement for the previous hosting stack.
+
+Before upgrading:
+
+- move hosting, configuration-source composition, Kestrel/SNI, certificates,
+  static files, warm-up, health probes, redirects, general request logging, and
+  traffic shaping to their dedicated WebLib or NetLib packages;
+- remove or relocate the old configuration sections for those capabilities;
+  this package no longer processes them;
+- review collection binding and explicitly choose the intended `UseCodeDefaults`
+  behavior when configuration is present;
+- update the application to a supported target framework: `net8.0` or
+  `net10.0`.
+
+The complete removed-API list and replacement dependency guidance are in the
+package release notes.
+
 ## ✨ At a glance
 
 | | |
